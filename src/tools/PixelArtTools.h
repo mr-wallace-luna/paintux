@@ -60,10 +60,13 @@ enum ToolType {
     // Lapices de grafito por grado
     ToolPencil3B,
     ToolPencil4B,
-    // ✅ NUEVAS HERRAMIENTAS (Fila 3 de Selección y Retoque)
+    // NUEVAS HERRAMIENTAS (Fila 3 de Selección y Retoque)
     ToolGradient,   // Gradientes (lineal/radial/cónico)
     ToolClone,      // Clonar estilo GIMP (Alt+clic = fuente, pintar = duplica)
-    ToolMove        // Mover capa / selección / texto / imagen
+    ToolMove,       // Mover capa / selección / texto / imagen
+    // Herramientas con UI flotante propia
+    ToolShadowBurn, // Sobreexponer / subexponer
+    ToolDeform      // Pincel de deformación
 };
 
 // --- RESOLVEDOR DE RUTAS PARA ASSETS ---
