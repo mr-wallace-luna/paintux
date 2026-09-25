@@ -48,10 +48,12 @@
 #include <vector>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <QTransform>
 #include <QRadialGradient>
 #include <QLinearGradient>
 #include <QConicalGradient>
+#include <QGradient>
 #include <QSvgGenerator>
 #include <QPaintEvent>
 #include <QStack>
@@ -67,7 +69,6 @@
 #include <QApplication>
 
 #include "tools/PixelArtTools.h"
-#include "tools/ToolCategories.h"
 #include "tools/PixelAnimationTools.h"
 #include "tools/LassoTools.h"
 #include "filter/ImageFilters.h"
@@ -115,6 +116,20 @@ signals:
 
 class PaintArea : public QWidget {
     Q_OBJECT
+
+public:
+    // ============================================================
+    // ExifTiffReader — lector de bloques TIFF con endianness
+    // (público para que parseExifSegment() del .cpp lo use)
+    // ============================================================
+    struct ExifTiffReader {
+        const uchar *tiff = nullptr;
+        int tiffLen = 0;
+        bool little = true;
+        int rd16(int off) const;
+        int rd32(int off) const;
+        bool isValid() const { return tiff != nullptr && tiffLen >= 8; }
+    };
 
 private:
     ///capas y mascaras
@@ -223,7 +238,53 @@ private:
     friend class mainwind;
 
     // ============================================================
-    // Helpers internos (colapsan duplicaciones)
+    // Categorización de herramientas (antes ToolCategories)
+    // ============================================================
+    static bool isShapeTool(ToolType t) {
+        switch (t) {
+            case ToolLine: case ToolRectangle: case ToolEllipse: case ToolRoundRect:
+            case ToolTriangle: case ToolRightTriangle: case ToolDiamond:
+            case ToolPentagon: case ToolHexagon:
+            case ToolArrowRight: case ToolArrowLeft:
+            case ToolStar: case ToolHeart: case ToolCube:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static bool isPaintingTool(ToolType t) {
+        switch (t) {
+            case ToolPencil: case ToolEraser:
+            case ToolBrush: case ToolSpray:
+            case ToolCrayon: case ToolMarker:
+            case ToolWatercolor: case ToolOilBrush:
+            case ToolCalligraphy: case ToolHighlighter:
+            case ToolCustomBrush:
+            case ToolMirrorPen: case ToolLighten:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static bool isVectorizableTool(ToolType t) {
+        switch (t) {
+            case ToolSelectFree:
+            case ToolLassoExtract:
+            case ToolLassoDelete:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static bool usesBrushStampFor(ToolType t) {
+        return ArtisticPresets::isArtisticTool(t) || t == ToolCustomBrush;
+    }
+
+    // ============================================================
+    // Helpers internos
     // ============================================================
     QColor selBlue() const;
     QColor selBlueLight() const;
@@ -233,14 +294,12 @@ private:
     bool puedeEditarCapaActual() const {
         return capaValida() && !stack.currentLocked();
     }
-    bool herramientaVectorizable() const;
+    bool herramientaVectorizable() const { return isVectorizableTool(currentTool); }
     QColor colorVectorActivo() const;
-    bool herramientaDePintura() const;
+    bool herramientaDePintura() const { return isPaintingTool(currentTool); }
 
     // --- Predicados y estado del pincel activo ---
-    bool usaStampDePincel() const {
-        return ArtisticPresets::isArtisticTool(currentTool) || currentTool == ToolCustomBrush;
-    }
+    bool usaStampDePincel() const { return usesBrushStampFor(currentTool); }
     const BrushSettings& activePreset() const;
     const QImage& activeStamp() const;
 
@@ -295,7 +354,7 @@ private:
     }
 
     // ============================================================
-    // keyPressEvent helpers (Extract Method)
+    // keyPressEvent helpers
     // ============================================================
     bool handleMaskBezierKeys(QKeyEvent *event);
     bool handleClipboardShortcuts(QKeyEvent *event);
@@ -307,7 +366,7 @@ private:
     bool handleToolSpecificKeys(QKeyEvent *event);
 
     // ============================================================
-    // mousePressEvent helpers (Extract Method)
+    // mousePressEvent helpers
     // ============================================================
     bool handlePressMaskBezier(const QPoint &pos);
     bool handlePressMaskPaint(const QPoint &pos);
@@ -331,7 +390,7 @@ private:
     void handlePressGenericStroke(const QPoint &pos, int scaledWidth);
 
     // ============================================================
-    // mouseMoveEvent helpers (Extract Method)
+    // mouseMoveEvent helpers
     // ============================================================
     bool handleMoveMaskBezier(const QPoint &pos);
     bool handleMoveMaskPaint(const QPoint &pos);
@@ -350,12 +409,10 @@ private:
     bool handleMoveTextHover(const QPoint &pos);
     void handleMoveCursorUpdate(const QPoint &pos);
 
-    // --- sub-ayudas de handleMoveTool ---
     bool handleMoveObjectManipulation(QMouseEvent *event, const QPoint &pos);
     bool handleMoveMovingLayer(const QPoint &pos);
     bool handleMoveToolHover(const QPoint &pos);
 
-    // --- sub-ayudas de handleMoveDrawing ---
     void applyBrushStroke(const QPoint &pos, const QColor &colorDeUso, const QColor &colorOpuesto);
     void applyPixelArtStroke(const QPoint &pos, const QColor &colorDeUso);
     void applyPencilStroke(const QPoint &pos, const QColor &colorDeUso, int scaledWidth);
@@ -364,7 +421,7 @@ private:
     void updateSelectionPreview(const QRect &selPrevia, const QPoint &puntoPrevio, const QPoint &pos);
 
     // ============================================================
-    // mouseReleaseEvent helpers (Extract Method)
+    // mouseReleaseEvent helpers
     // ============================================================
     bool handleReleaseMaskPaint();
     bool handleReleaseVectorPoint();
@@ -381,7 +438,7 @@ private:
     void finishShapeRelease(const QPoint &finalPoint, int scaledWidth);
 
     // ============================================================
-    // paintEvent helpers (Extract Method)
+    // paintEvent helpers
     // ============================================================
     void paintCheckerboard(QPainter &painter, const QRect &canvasRect);
     void paintMaskOverlay(QPainter &painter);
@@ -397,6 +454,22 @@ private:
     void paintSelectionGizmos(QPainter &painter);
     void paintCanvasHandles(QPainter &painter);
     void paintCursorSilhouette(QPainter &painter, int scaledWidth);
+
+    // ============================================================
+    // paintCursorSilhouette helpers
+    // ============================================================
+    void paintMaskBrushSilhouette(QPainter &painter);
+    void paintRetouchSilhouette(QPainter &painter, int scaledWidth);
+    void paintDeformSilhouette(QPainter &painter);
+    void paintCloneSilhouette(QPainter &painter, int scaledWidth);
+    void paintBrushStampSilhouette(QPainter &painter);
+
+    // ============================================================
+    // paintGradientPreview helpers
+    // ============================================================
+    std::unique_ptr<QGradient> buildGradientForPreview() const;
+    void paintGradientFill(QPainter &painter, QGradient *grad);
+    void paintGradientHandleOverlay(QPainter &painter);
 
 public:
     explicit PaintArea(QWidget *parent = nullptr);
