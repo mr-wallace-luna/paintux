@@ -172,7 +172,6 @@ void PaintArea::beginEdit() {
 }
 
 /// Mapea ToolType de retoque al código numérico que usa RetouchTools.
-/// 101 = ShadowBurn, 201 = Blur, 202 = Heal (según RetouchTools.h).
 static int retouchToolCode(ToolType t) {
     switch (t) {
         case ToolBlur:        return 201;
@@ -1375,10 +1374,9 @@ bool PaintArea::getVectorEditMode() const { return vectorEditMode; }
 void PaintArea::editTextObject(int idx) { loadTextObjectForEditing(idx); }
 
 /// ============================================================
-/// keyPressEvent — dispatcher delgado (Extract Method)
+/// keyPressEvent — dispatcher delgado
 /// ============================================================
 void PaintArea::keyPressEvent(QKeyEvent *event) {
-    // Orden de prioridad: primero lo más específico, al final lo genérico.
     if (handleMaskBezierKeys(event))      return;
     if (handleClipboardShortcuts(event))  return;
     if (handleDeleteKey(event))           return;
@@ -1388,7 +1386,6 @@ void PaintArea::keyPressEvent(QKeyEvent *event) {
     if (handleToolSpecificKeys(event))    return;
     if (handleBezierPenKeys(event))       return;
 
-    // Fallback: Enter/Return global hornea pendientes.
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         bakeActivePath();
         bakeSelection();
@@ -1397,72 +1394,47 @@ void PaintArea::keyPressEvent(QKeyEvent *event) {
     QWidget::keyPressEvent(event);
 }
 
-/// ------------------------------------------------------------
-/// 1) Enter/Esc/Delete en Bezier de máscara (prioridad alta)
-/// ------------------------------------------------------------
 bool PaintArea::handleMaskBezierKeys(QKeyEvent *event) {
     if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
     if (!m_maskEdit.hasBezierNodes() || textEdit.active)         return false;
 
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        m_maskEdit.rasterizeBezier(zoomFactor);
-        return true;
+        m_maskEdit.rasterizeBezier(zoomFactor); return true;
     }
     if (event->key() == Qt::Key_Escape) {
-        m_maskEdit.cancelBezier();
-        update();
-        return true;
+        m_maskEdit.cancelBezier(); update(); return true;
     }
     if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
         && m_maskEdit.selectedNode() >= 0) {
-        m_maskEdit.removeSelectedNode();
-        update();
-        return true;
+        m_maskEdit.removeSelectedNode(); update(); return true;
     }
     return false;
 }
 
-/// ------------------------------------------------------------
-/// 2) Ctrl+C / Ctrl+X / Ctrl+V (portapapeles)
-/// ------------------------------------------------------------
 bool PaintArea::handleClipboardShortcuts(QKeyEvent *event) {
     if (!(event->modifiers() & Qt::ControlModifier)) return false;
     if (textEdit.active) return false;
-
     if (event->key() == Qt::Key_C) { copiarSeleccion(); return true; }
     if (event->key() == Qt::Key_X) { cortarSeleccion(); return true; }
     if (event->key() == Qt::Key_V) { pegarClipboard();  return true; }
     return false;
 }
 
-/// ------------------------------------------------------------
-/// 3) Delete / Backspace (borrar selección)
-/// ------------------------------------------------------------
 bool PaintArea::handleDeleteKey(QKeyEvent *event) {
     if (textEdit.active) return false;
     if (event->key() != Qt::Key_Delete && event->key() != Qt::Key_Backspace) return false;
-    borrarSeleccion();
-    return true;
+    borrarSeleccion(); return true;
 }
 
-/// ------------------------------------------------------------
-/// 4) O / I (convertir selección en objeto / integrar objetos)
-/// ------------------------------------------------------------
 bool PaintArea::handleObjectShortcuts(QKeyEvent *event) {
     if (textEdit.active) return false;
-
     if (event->key() == Qt::Key_O) { convertSelectionToObject();  return true; }
     if (event->key() == Qt::Key_I) { integrateSelectedObjects();  return true; }
     return false;
 }
 
-/// ------------------------------------------------------------
-/// 5) V (toggle modo vector) + Enter/Esc/Delete en modo vector
-/// ------------------------------------------------------------
 bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
     if (textEdit.active) return false;
-
-    // Toggle con V
     if (event->key() == Qt::Key_V && herramientaVectorizable() && !vectorEditMode) {
         if (selMgr.isActive()) { emit statusBarMessage(tr("Deselecciona primero")); return true; }
         vectorEditMode = true;
@@ -1475,13 +1447,8 @@ bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
         update();
         return true;
     }
-
-    // Si ya estamos en modo vector y usamos una tool vectorizable, no consumimos nada.
-    // El toggle "apagado" se hace desde la propia tool.
     if (!vectorEditMode || !herramientaVectorizable()) return false;
-
     if (event->key() == Qt::Key_V) {
-        // Toggle off
         vectorEditMode = false;
         vectorPoints.clear();
         selectedVectorPoint = -1;
@@ -1491,13 +1458,10 @@ bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
         return true;
     }
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        finalizeVectorPath();
-        return true;
+        finalizeVectorPath(); return true;
     }
     if (event->key() == Qt::Key_Escape) {
-        cancelVectorMode();
-        emit statusBarMessage(tr("Cancelado"));
-        return true;
+        cancelVectorMode(); emit statusBarMessage(tr("Cancelado")); return true;
     }
     if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
         && selectedVectorPoint >= 0) {
@@ -1509,522 +1473,743 @@ bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
     return false;
 }
 
-/// ------------------------------------------------------------
-/// 6) Teclas dentro del frame de texto activo
-/// ------------------------------------------------------------
 bool PaintArea::handleTextEditingKeys(QKeyEvent *event) {
     if (!textEdit.active) return false;
-
     switch (event->key()) {
-        case Qt::Key_Escape:
-            cancelTextFrame();
-            emit textFrameCancelled();
-            return true;
+        case Qt::Key_Escape:    cancelTextFrame(); emit textFrameCancelled(); return true;
         case Qt::Key_Return:
-        case Qt::Key_Enter:
-            textEdit.insertNewline();
-            return true;
-        case Qt::Key_Backspace:
-            textEdit.backspace();
-            return true;
-        case Qt::Key_Delete:
-            textEdit.deleteChar();
-            return true;
-        case Qt::Key_Left:
-            textEdit.moveLeft();
-            return true;
-        case Qt::Key_Right:
-            textEdit.moveRight();
-            return true;
-        case Qt::Key_Home:
-            textEdit.moveHome();
-            return true;
-        case Qt::Key_End:
-            textEdit.moveEnd();
-            return true;
-        default:
-            break;
+        case Qt::Key_Enter:     textEdit.insertNewline(); return true;
+        case Qt::Key_Backspace: textEdit.backspace(); return true;
+        case Qt::Key_Delete:    textEdit.deleteChar(); return true;
+        case Qt::Key_Left:      textEdit.moveLeft(); return true;
+        case Qt::Key_Right:     textEdit.moveRight(); return true;
+        case Qt::Key_Home:      textEdit.moveHome(); return true;
+        case Qt::Key_End:       textEdit.moveEnd(); return true;
+        default: break;
     }
-
     const QString txt = event->text();
-    if (!txt.isEmpty() && txt.at(0).isPrint()) {
-        textEdit.insert(txt);
-        return true;
-    }
+    if (!txt.isEmpty() && txt.at(0).isPrint()) { textEdit.insert(txt); return true; }
     return false;
 }
 
-/// ------------------------------------------------------------
-/// 7) Teclas específicas de la tool activa (Esc en Move, Ctrl+G en Gradient)
-/// ------------------------------------------------------------
 bool PaintArea::handleToolSpecificKeys(QKeyEvent *event) {
     if (currentTool == ToolMove && event->key() == Qt::Key_Escape) {
-        selMgr.deselectAllObjects();
-        movingLayer = false;
-        update();
-        return true;
+        selMgr.deselectAllObjects(); movingLayer = false; update(); return true;
     }
-    if (currentTool == ToolGradient
-        && event->key() == Qt::Key_G
+    if (currentTool == ToolGradient && event->key() == Qt::Key_G
         && (event->modifiers() & Qt::ControlModifier)) {
-        openGradientSettings();
-        return true;
+        openGradientSettings(); return true;
     }
     return false;
 }
 
-/// ------------------------------------------------------------
-/// 8) Enter/Esc en BezierPathTool (pluma Bézier normal)
-/// ------------------------------------------------------------
 bool PaintArea::handleBezierPenKeys(QKeyEvent *event) {
     if (currentTool != ToolPenBezier || bezierTool.isEmpty()) return false;
-
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         if (bezierTool.finalize()) bakeActivePath();
         return true;
     }
     if (event->key() == Qt::Key_Escape) {
-        bezierTool.cancel();
+        bezierTool.cancel(); update(); return true;
+    }
+    return false;
+}
+
+/// ============================================================
+/// mousePressEvent — dispatcher
+/// ============================================================
+void PaintArea::mousePressEvent(QMouseEvent *event) {
+    setFocus();
+    if (event->button() != Qt::LeftButton && event->button() != Qt::RightButton) return;
+
+    activeMouseButton = event->button();
+    m_maskEdit.setActiveMouseButton(activeMouseButton);
+
+    const QPoint rawPos = event->position().toPoint();
+    const QPoint pos(rawPos.x() / zoomFactor, rawPos.y() / zoomFactor);
+    const int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
+
+    if (handlePressMaskBezier(pos))          return;
+    if (handlePressMaskPaint(pos))           return;
+    if (handlePressVector(pos))              return;
+    if (handlePressTextActive(pos))          return;
+    if (handlePressCanvasHandles(rawPos))    return;
+    if (handlePressSelectionGizmo(pos))      return;
+    if (handlePressZoom(event, rawPos))      return;
+
+    if (stack.canvasRect().contains(pos))
+        handlePressInsideCanvas(event, pos, scaledWidth);
+}
+
+bool PaintArea::handlePressMaskBezier(const QPoint &pos) {
+    if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
+    bool consumed = m_maskEdit.beginBezierClick(pos, zoomFactor, activeMouseButton == Qt::RightButton);
+    if (consumed) update();
+    return consumed;
+}
+
+bool PaintArea::handlePressMaskPaint(const QPoint &pos) {
+    if (!stack.isEditingMask() || !herramientaDePintura()) return false;
+    if (!m_maskEdit.beginStroke(pos)) return false;
+    lastPoint = pos;
+    drawing = true;
+    emit layersChanged();
+    return true;
+}
+
+bool PaintArea::handlePressVector(const QPoint &pos) {
+    if (!vectorEditMode || !herramientaVectorizable()) return false;
+    if (activeMouseButton != Qt::LeftButton) return false;
+
+    QPointF canvasPos(pos.x(), pos.y());
+    if (isNearFirstPoint(canvasPos)) { finalizeVectorPath(); return true; }
+    int hitIdx = findVectorPointAt(canvasPos);
+    if (hitIdx >= 0) {
+        selectedVectorPoint = hitIdx;
+        draggingVectorPoint = true;
+        update();
+        return true;
+    }
+    vectorPoints.append(canvasPos);
+    selectedVectorPoint = vectorPoints.size() - 1;
+    update();
+    return true;
+}
+
+bool PaintArea::handlePressTextActive(const QPoint &pos) {
+    if (!textEdit.active || activeMouseButton != Qt::LeftButton) return false;
+    TextEngine::Handle h = textEdit.hitHandleAt(pos);
+    if (h != TextEngine::Handle::None && h != TextEngine::Handle::Body) {
+        textEdit.startResize(h);
+        return true;
+    }
+    if (h == TextEngine::Handle::Body) {
+        textEdit.startDrag(pos);
+        return true;
+    }
+    bakeTextFrame();
+    return false;
+}
+
+bool PaintArea::handlePressCanvasHandles(const QPoint &rawPos) {
+    if (activeMouseButton != Qt::LeftButton || selMgr.isActive() || textEdit.active)
+        return false;
+
+    auto enableResize = [&](int mode) {
+        resizingCanvas = true;
+        resizeMode = mode;
+        previewCanvasSize = QPoint(stack.width(), stack.height());
+    };
+
+    if (getBottomRightHandle().contains(rawPos)) { enableResize(3); return true; }
+    if (getRightHandle().contains(rawPos))       { enableResize(1); return true; }
+    if (getBottomHandle().contains(rawPos))      { enableResize(2); return true; }
+    return false;
+}
+
+bool PaintArea::handlePressSelectionGizmo(const QPoint &pos) {
+    if (!selMgr.isActive() || activeMouseButton != Qt::LeftButton || vectorEditMode)
+        return false;
+
+    const QPointF cp(pos.x(), pos.y());
+    const double threshold = 12.0 / zoomFactor;
+    const QPointF convPos = selMgr.convertHandlePos(zoomFactor);
+    if (QLineF(cp, convPos).length() <= threshold) { convertSelectionToObject(); return true; }
+
+    ObjectHandle hSel = selMgr.hitTestGizmoAt(cp, zoomFactor);
+    if (hSel == ObjectHandle::Rotate) {
+        selMgr.setRotating(true);
+        setCursor(Qt::CrossCursor);
+        return true;
+    }
+    if (isScaleHandle(hSel)) {
+        selMgr.setResizing(true);
+        selMgr.setResizeHandle(hSel);
+        selMgr.setResizeStart(QRectF(selMgr.rect()), cp);
+        setCursor(cursorForHandle(hSel));
+        return true;
+    }
+    if (hSel == ObjectHandle::Move) {
+        selMgr.setDragging(true);
+        selMgr.setDragOffset(pos - selMgr.rect().topLeft());
+        setCursor(Qt::ClosedHandCursor);
+        return true;
+    }
+    bakeSelection();
+    return false;
+}
+
+bool PaintArea::handlePressZoom(QMouseEvent *event, const QPoint &rawPos) {
+    if (currentTool != ToolZoom) return false;
+    QPoint viewportPos = mapToParent(rawPos);
+    if (event->button() == Qt::LeftButton)
+        emit zoomRequested(zoomFactor * 2.0, viewportPos);
+    else
+        emit zoomRequested(zoomFactor / 2.0, viewportPos);
+    return true;
+}
+
+bool PaintArea::handlePressCapaBloqueada() {
+    if (!capaValida() || !stack.currentLocked()) return false;
+    if (currentTool == ToolPicker || currentTool == ToolZoom) return false;
+    emit statusBarMessage(tr("Capa bloqueada"));
+    return true;
+}
+
+bool PaintArea::handlePressPenBezier(const QPoint &pos) {
+    if (currentTool != ToolPenBezier) return false;
+    bool completed = bezierTool.click(pos, zoomFactor, activeMouseButton == Qt::RightButton);
+    if (completed) bakeActivePath();
+    else update();
+    return true;
+}
+
+bool PaintArea::handlePressSelectRect(const QPoint &pos) {
+    if (currentTool != ToolSelect) return false;
+    if (vectorEditMode) return true;
+    startPoint = pos;
+    selMgr.startRect(pos);
+    drawing = true;
+    return true;
+}
+
+bool PaintArea::handlePressSelectFree(const QPoint &pos) {
+    if (currentTool != ToolSelectFree &&
+        currentTool != ToolLassoExtract &&
+        currentTool != ToolLassoDelete) return false;
+    if (vectorEditMode) return true;
+    startPoint = pos;
+    selMgr.startFree(pos);
+    drawing = true;
+    return true;
+}
+
+void PaintArea::handlePressBucket(const QPoint &pos, const QColor &colorDeUso) {
+    saveHistoryState();
+    if (capaValida()) {
+        PaintEngine::floodFill(stack.currentImage(), pos, colorDeUso);
+        refreshAndNotify();
+    }
+}
+
+void PaintArea::handlePressPicker(const QPoint &pos) {
+    QColor picked = stack.compositedImage().pixelColor(pos);
+    emit colorPicked((activeMouseButton == Qt::LeftButton) ? 1 : 2, picked);
+}
+
+void PaintArea::handlePressText(const QPoint &pos, const QColor &colorDeUso) {
+    if (textEdit.active) return;
+    const int defaultW = qMax(100, stack.width() / 4);
+    const int defaultH = qMax(60, stack.height() / 8);
+    QRect r(pos.x(), pos.y(), defaultW, defaultH);
+    textEdit.beginNew(r, lastUsedTextFont, colorDeUso);
+    emit textFrameClicked(pos);
+    update();
+}
+
+bool PaintArea::handlePressGradient(QMouseEvent *event, const QPoint &pos) {
+    if (currentTool != ToolGradient) return false;
+    if (event->modifiers() & Qt::AltModifier) {
+        gradientType = (GradientType)(((int)gradientType + 1) % 3);
+        emit statusBarMessage(tr("Gradiente: %1").arg(
+            gradientType == GradientLinear ? tr("Lineal") :
+            gradientType == GradientRadial ? tr("Radial") : tr("Cónico")));
+        return true;
+    }
+    if (event->modifiers() & Qt::ControlModifier) { openGradientSettings(); return true; }
+    gradientStart = pos;
+    gradientEnd = pos;
+    drawingGradient = true;
+    return true;
+}
+
+bool PaintArea::handlePressClone(QMouseEvent *event, const QPoint &pos) {
+    if (currentTool != ToolClone) return false;
+
+    if ((event->modifiers() & Qt::AltModifier) || !cloneSourceSet) {
+        cloneSource = pos;
+        cloneSourceSet = true;
+        if (capaValida()) cloneBuffer = stack.currentImage().copy();
+        cloneInitialDest = pos;
+        emit statusBarMessage(tr("Fuente fijada"));
+        update();
+        return true;
+    }
+    if (!cloneSourceSet) {
+        emit statusBarMessage(tr("Alt+clic para fijar fuente"));
+        return true;
+    }
+    saveHistoryState();
+    cloneInitialDest = pos;
+    cloneIsStamping = true;
+    if (capaValida()) {
+        applyClonStamp(stack.currentImage(), pos);
+        invalidarTrazo(pos, pos);
+        emit layersChanged();
+    }
+    return true;
+}
+
+void PaintArea::handlePressMove(QMouseEvent *event, const QPoint &pos) {
+    const QPointF canvasPos(pos.x(), pos.y());
+    const bool shiftHeld = (event->modifiers() & Qt::ShiftModifier);
+    const int activeIdx = selMgr.activeObjectIndex();
+
+    if (!shiftHeld && activeIdx >= 0 && activeIdx < selMgr.objectCount()
+        && selMgr.objectAt(activeIdx).selected) {
+        ObjectHandle h = selMgr.findObjectGizmoHandleAt(activeIdx, canvasPos, zoomFactor);
+        if (h == ObjectHandle::IntegrateToCanvas) { integrateSelectedObjects(); return; }
+        if (h == ObjectHandle::EditText)          { loadTextObjectForEditing(activeIdx); return; }
+        if (h == ObjectHandle::EditShape)         { loadShapeObjectForEditing(activeIdx); return; }
+        if (h != ObjectHandle::None) {
+            selMgr.setObjectActiveHandle(h);
+            selMgr.setObjectDragStart(canvasPos);
+            selMgr.setObjectRotationStart(selMgr.objectAt(activeIdx).rotation);
+            selMgr.setObjectScaleStart(selMgr.objectAt(activeIdx).scaleX, selMgr.objectAt(activeIdx).scaleY);
+            selMgr.setObjectBoundsStart(selMgr.objectAt(activeIdx).bounds);
+            if (h == ObjectHandle::Move)        selMgr.setObjectDragging(true);
+            else if (h == ObjectHandle::Rotate) selMgr.setObjectRotating(true);
+            else                                selMgr.setObjectScaling(true);
+            setCursor(cursorForHandle(h));
+            return;
+        }
+    }
+
+    int hitObj = selMgr.findObjectAt(canvasPos);
+    if (hitObj >= 0) {
+        if (shiftHeld) {
+            selMgr.selectObject(hitObj, true);
+        } else {
+            if (!selMgr.objectAt(hitObj).selected) selMgr.selectObject(hitObj, false);
+            selMgr.setObjectActiveHandle(ObjectHandle::Move);
+            selMgr.setActiveObjectIndex(hitObj);
+            selMgr.setObjectDragStart(canvasPos);
+            selMgr.setObjectBoundsStart(selMgr.objectAt(hitObj).bounds);
+            selMgr.setObjectDragging(true);
+            setCursor(Qt::ClosedHandCursor);
+        }
+        return;
+    }
+
+    if (!selMgr.selectedObjectIndices().isEmpty()) {
+        selMgr.deselectAllObjects();
+        return;
+    }
+
+    if (puedeEditarCapaActual()) {
+        saveHistoryState();
+        movingLayer = true;
+        moveStartPos = pos;
+        moveLayerIdx = stack.currentIndex();
+        moveLayerBackup = stack.currentImage().copy();
+    }
+}
+
+void PaintArea::handlePressDeform(const QPoint &pos) {
+    if (!puedeEditarCapaActual()) return;
+    saveHistoryState();
+    m_deform.begin(pos, &stack.currentImage(),
+                   activeMouseButton == Qt::RightButton);
+}
+
+void PaintArea::handlePressGenericStroke(const QPoint &pos, int scaledWidth) {
+    saveHistoryState();
+    startPoint = pos;
+    lastPoint = startPoint;
+    drawing = true;
+    currentMousePos = pos;
+    strokeTotalLength = 0.0;
+    strokeAccumulatedLength = 0.0;
+    strokeInProgress = true;
+
+    QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
+    if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
+    QColor colorOpuesto = obtenerColorDeTrabajo(
+        activeMouseButton == Qt::LeftButton ? Qt::RightButton : Qt::LeftButton);
+    strokeCanvasFallback = QColor();
+
+    if (usaStampDePincel() && activePreset().wetMix)
+        strokeCanvasFallback = PaintEngine::sampleCanvasColor(stack.compositedImage(), pos,
+                                                             qMax(3, scaledWidth));
+
+    if (usaStampDePincel()) {
+        const BrushSettings &preset = activePreset();
+        lastClassicPoint = pos;
+        lastCustomPoint = pos;
+        if (preset.isAirbrush || preset.dragMode == DragMode::Scattered)
+            continuousDrawTimer->start(16);
+        if (capaValida()) {
+            PaintEngine::applyCustomBrushStroke(stack.currentImage(), pos, activeStamp(),
+                preset, mouseSensitivity, 0.0, 1.0, 1.0,
+                colorDeUso, colorOpuesto, strokeCanvasFallback);
+            invalidarTrazo(pos, pos);
+            emit layersChanged();
+        }
+    } else if ((currentTool == ToolPencil || currentTool == ToolEraser ||
+                currentTool == ToolMirrorPen || currentTool == ToolLighten)
+               && pixelOptions.getIsPixelArtMode()) {
+        if (capaValida()) {
+            drawPixelArtPixel(stack.currentImage(), pos, colorDeUso, currentTool, true);
+            invalidarTrazo(pos, pos);
+            emit layersChanged();
+        }
+    } else if (currentTool == ToolPencil) {
+        if (capaValida()) {
+            PaintEngine::applyGraphitePencil(stack.currentImage(), pos, pos, colorDeUso, scaledWidth, penOpacity);
+            invalidarTrazo(pos, pos);
+            emit layersChanged();
+        }
+    } else if (currentTool == ToolEraser) {
+        if (capaValida()) {
+            PaintEngine::applyEraserLine(stack.currentImage(), pos, pos, scaledWidth, true);
+            invalidarTrazo(pos, pos);
+            emit layersChanged();
+        }
+    } else if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
+        RetouchTools::applyRetouchAlongLine(stack.currentImage(), pos, pos,
+                                            penWidth, mouseSensitivity, penOpacity,
+                                            retouchToolCode(currentTool));
+        invalidarTrazo(pos, pos);
+        emit layersChanged();
+    }
+}
+
+void PaintArea::handlePressInsideCanvas(QMouseEvent *event, const QPoint &pos, int scaledWidth) {
+    if (handlePressCapaBloqueada())      return;
+    if (handlePressPenBezier(pos))       return;
+    if (handlePressSelectRect(pos))      return;
+    if (handlePressSelectFree(pos))      return;
+
+    QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
+    if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
+
+    if (currentTool == ToolMagicWand) { magicWandSelect(pos, static_cast<int>(32 * mouseSensitivity)); return; }
+    if (currentTool == ToolBucket)    { handlePressBucket(pos, colorDeUso); return; }
+    if (currentTool == ToolPicker)    { handlePressPicker(pos); return; }
+    if (currentTool == ToolText)      { handlePressText(pos, colorDeUso); return; }
+    if (handlePressGradient(event, pos)) return;
+    if (handlePressClone(event, pos))    return;
+
+    if (currentTool == ToolMove)   { handlePressMove(event, pos); return; }
+    if (currentTool == ToolDeform) { handlePressDeform(pos); return; }
+
+    handlePressGenericStroke(pos, scaledWidth);
+}
+
+/// ============================================================
+/// mouseMoveEvent — dispatcher
+/// ============================================================
+void PaintArea::mouseMoveEvent(QMouseEvent *event) {
+    const QPoint rawPos = event->position().toPoint();
+    const QPoint pos(rawPos.x() / zoomFactor, rawPos.y() / zoomFactor);
+    hoverPos = rawPos;
+    previousMousePos = currentMousePos;
+    currentMousePos = pos;
+    const int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
+
+    if (handleMoveMaskBezier(pos))                              return;
+    if (handleMoveMaskPaint(pos))                               return;
+    if (handleMoveVector(pos))                                  return;
+    if (handleMoveTextActive(pos))                              return;
+    if (handleMoveCanvasResize(rawPos))                         return;
+    if (handleMoveSelectionRotate(event, pos))                  return;
+    if (handleMoveSelectionResize(event, pos))                  return;
+    if (handleMoveSelectionDrag(pos))                           return;
+    if (handleMoveGradientPreview(pos))                         return;
+    if (handleMoveClone(pos, event->buttons()))                 return;
+    if (handleMoveDeform(pos, event->buttons()))                return;
+    if (handleMoveTool(event, pos))                             return;
+    if (handleMoveSelectionHover(pos))                          return;
+    if (handleMoveDrawing(pos, scaledWidth))                    return;
+    if (handleMoveTextHover(pos))                               return;
+
+    handleMoveCursorUpdate(pos);
+}
+
+bool PaintArea::handleMoveMaskBezier(const QPoint &pos) {
+    if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
+    if (!m_maskEdit.isDraggingNode()) return false;
+    if (m_maskEdit.moveBezierNode(pos)) update();
+    return true;
+}
+
+bool PaintArea::handleMoveMaskPaint(const QPoint &pos) {
+    if (!drawing || !stack.isEditingMask() || !herramientaDePintura()) return false;
+    m_maskEdit.continueStroke(lastPoint, pos);
+    lastPoint = pos;
+    return true;
+}
+
+bool PaintArea::handleMoveVector(const QPoint &pos) {
+    if (!vectorEditMode || !herramientaVectorizable()) return false;
+    vectorHoverPos = QPointF(pos.x(), pos.y());
+
+    if (draggingVectorPoint && selectedVectorPoint >= 0
+        && selectedVectorPoint < vectorPoints.size()) {
+        vectorPoints[selectedVectorPoint] = QPointF(pos.x(), pos.y());
+        update();
+        return true;
+    }
+    const bool overPoint = (findVectorPointAt(QPointF(pos.x(), pos.y())) >= 0);
+    const bool overFirst = isNearFirstPoint(QPointF(pos.x(), pos.y()));
+    if (overFirst)       setCursor(Qt::ClosedHandCursor);
+    else if (overPoint)  setCursor(Qt::OpenHandCursor);
+    else                 setCursor(Qt::CrossCursor);
+    update();
+    return true;
+}
+
+bool PaintArea::handleMoveTextActive(const QPoint &pos) {
+    if (!textEdit.active) return false;
+    if (textEdit.dragging) { textEdit.dragTo(pos); return true; }
+    if (textEdit.resizing) { textEdit.resizeTo(pos, 20, 20); return true; }
+    return false;
+}
+
+bool PaintArea::handleMoveCanvasResize(const QPoint &rawPos) {
+    if (!resizingCanvas) return false;
+    if (resizeMode == 1 || resizeMode == 3)
+        previewCanvasSize.setX(qMax(50, int(rawPos.x() / zoomFactor)));
+    if (resizeMode == 2 || resizeMode == 3)
+        previewCanvasSize.setY(qMax(50, int(rawPos.y() / zoomFactor)));
+    update();
+    return true;
+}
+
+bool PaintArea::handleMoveSelectionRotate(QMouseEvent *event, const QPoint &pos) {
+    if (!selMgr.isRotating()) return false;
+    selMgr.updateRotation(pos);
+    if (event->modifiers() & Qt::ShiftModifier) selMgr.snapRotation();
+    update();
+    return true;
+}
+
+bool PaintArea::handleMoveSelectionResize(QMouseEvent *event, const QPoint &pos) {
+    if (!selMgr.isResizing()) return false;
+    const bool keepAspect = (event->modifiers() & Qt::ShiftModifier);
+    selMgr.applyResize(selMgr.activeResizeHandle(), QPointF(pos.x(), pos.y()), keepAspect);
+    setCursor(cursorForHandle(selMgr.activeResizeHandle()));
+    update();
+    return true;
+}
+
+bool PaintArea::handleMoveSelectionDrag(const QPoint &pos) {
+    if (!selMgr.isDragging()) return false;
+    selMgr.moveTo(pos);
+    update();
+    return true;
+}
+
+bool PaintArea::handleMoveGradientPreview(const QPoint &pos) {
+    if (!drawingGradient || currentTool != ToolGradient) return false;
+    gradientEnd = pos;
+    update();
+    return true;
+}
+
+bool PaintArea::handleMoveClone(const QPoint &pos, Qt::MouseButtons buttons) {
+    if (!cloneIsStamping || currentTool != ToolClone || !cloneSourceSet) return false;
+    if (!(buttons & Qt::LeftButton)) return false;
+    if (capaValida()) {
+        applyClonStamp(stack.currentImage(), pos);
+        invalidarTrazo(pos, pos);
+        emit layersChanged();
+    }
+    invalidarPreviewClone(pos);
+    return true;
+}
+
+bool PaintArea::handleMoveDeform(const QPoint &pos, Qt::MouseButtons buttons) {
+    if (!m_deform.isActive() || currentTool != ToolDeform) return false;
+    if (!(buttons & (Qt::LeftButton | Qt::RightButton))) return false;
+    const QPoint prev = previousMousePos;
+    m_deform.continueStroke(pos);
+    invalidarTrazo(prev, pos);
+    return true;
+}
+
+bool PaintArea::handleMoveObjectManipulation(QMouseEvent *event, const QPoint &pos) {
+    const QPointF canvasPos(pos.x(), pos.y());
+    const int activeIdx = selMgr.activeObjectIndex();
+    if (activeIdx < 0 || activeIdx >= selMgr.objectCount()) return false;
+
+    if (selMgr.isObjectDragging() && selMgr.objectActiveHandle() == ObjectHandle::Move) {
+        selMgr.moveActiveObject(canvasPos);
+        setCursor(Qt::ClosedHandCursor);
+        update();
+        return true;
+    }
+    if (selMgr.isObjectRotating() && selMgr.objectActiveHandle() == ObjectHandle::Rotate) {
+        selMgr.rotateActiveObject(canvasPos, event->modifiers() & Qt::ShiftModifier);
+        setCursor(Qt::ClosedHandCursor);
+        update();
+        return true;
+    }
+    if (selMgr.isObjectScaling()) {
+        selMgr.scaleActiveObject(canvasPos, event->modifiers() & Qt::ShiftModifier);
+        setCursor(cursorForHandle(selMgr.objectActiveHandle()));
         update();
         return true;
     }
     return false;
 }
 
-/// ========== mousePressEvent ==========
-void PaintArea::mousePressEvent(QMouseEvent *event) {
-    setFocus();
-    QPoint rawPos = event->position().toPoint();
-    QPoint pos(rawPos.x() / zoomFactor, rawPos.y() / zoomFactor);
-    int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
-    if (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) {
-        activeMouseButton = event->button();
-        m_maskEdit.setActiveMouseButton(activeMouseButton);
+bool PaintArea::handleMoveMovingLayer(const QPoint &pos) {
+    if (!movingLayer || moveLayerIdx < 0 || moveLayerIdx >= stack.count()) return false;
+    const QPoint delta = pos - moveStartPos;
+    stack.layerAt(moveLayerIdx).image.fill(Qt::transparent);
+    QPainter p(&stack.layerAt(moveLayerIdx).image);
+    p.drawImage(delta.x(), delta.y(), moveLayerBackup);
+    p.end();
+    recomponerImagen();
+    emit layersChanged();
+    update();
+    return true;
+}
 
-        // Máscara + Bezier
-        if (stack.isEditingMask() && currentTool == ToolPenBezier) {
-            bool consumed = m_maskEdit.beginBezierClick(pos, zoomFactor, activeMouseButton == Qt::RightButton);
-            if (consumed) { update(); return; }
-        }
-        // Máscara + Pintura
-        if (stack.isEditingMask() && herramientaDePintura()) {
-            if (m_maskEdit.beginStroke(pos)) {
-                lastPoint = pos;
-                drawing = true;
-                emit layersChanged();
-                return;
-            }
-        }
-        // Modo vector
-        if (vectorEditMode && herramientaVectorizable() && event->button() == Qt::LeftButton) {
-            QPointF canvasPos(pos.x(), pos.y());
-            if (isNearFirstPoint(canvasPos)) { finalizeVectorPath(); return; }
-            int hitIdx = findVectorPointAt(canvasPos);
-            if (hitIdx >= 0) { selectedVectorPoint = hitIdx; draggingVectorPoint = true; update(); return; }
-            vectorPoints.append(canvasPos);
-            selectedVectorPoint = vectorPoints.size() - 1;
-            update(); return;
-        }
-        // Texto activo
-        if (textEdit.active && activeMouseButton == Qt::LeftButton) {
-            TextEngine::Handle h = textEdit.hitHandleAt(pos);
-            if (h != TextEngine::Handle::None && h != TextEngine::Handle::Body) {
-                textEdit.startResize(h);
-                return;
-            }
-            if (h == TextEngine::Handle::Body) {
-                textEdit.startDrag(pos);
-                return;
-            }
-            bakeTextFrame();
-        }
-        // Handles de redimensión del lienzo
-        if (activeMouseButton == Qt::LeftButton && !selMgr.isActive() && !textEdit.active) {
-            if (getBottomRightHandle().contains(rawPos)) { resizingCanvas = true; resizeMode = 3; previewCanvasSize = QPoint(stack.width(), stack.height()); return; }
-            if (getRightHandle().contains(rawPos)) { resizingCanvas = true; resizeMode = 1; previewCanvasSize = QPoint(stack.width(), stack.height()); return; }
-            if (getBottomHandle().contains(rawPos)) { resizingCanvas = true; resizeMode = 2; previewCanvasSize = QPoint(stack.width(), stack.height()); return; }
-        }
-        // Gizmo de selección activa
-        if (selMgr.isActive() && activeMouseButton == Qt::LeftButton && !vectorEditMode) {
-            QPointF cp(pos.x(), pos.y());
-            double threshold = 12.0 / zoomFactor;
-            QPointF convPos = selMgr.convertHandlePos(zoomFactor);
-            if (QLineF(cp, convPos).length() <= threshold) { convertSelectionToObject(); return; }
-            ObjectHandle hSel = selMgr.hitTestGizmoAt(cp, zoomFactor);
-            if (hSel == ObjectHandle::Rotate) {
-                selMgr.setRotating(true);
-                setCursor(Qt::CrossCursor);
-                return;
-            }
-            if (isScaleHandle(hSel)) {
-                selMgr.setResizing(true);
-                selMgr.setResizeHandle(hSel);
-                selMgr.setResizeStart(QRectF(selMgr.rect()), cp);
-                setCursor(cursorForHandle(hSel));
-                return;
-            }
-            if (hSel == ObjectHandle::Move) {
-                selMgr.setDragging(true);
-                selMgr.setDragOffset(pos - selMgr.rect().topLeft());
-                setCursor(Qt::ClosedHandCursor);
-                return;
-            }
-            bakeSelection();
-        }
-        // Zoom
-        if (currentTool == ToolZoom) {
-            QPoint viewportPos = mapToParent(rawPos);
-            if (event->button() == Qt::LeftButton) emit zoomRequested(zoomFactor * 2.0, viewportPos);
-            else emit zoomRequested(zoomFactor / 2.0, viewportPos);
-            return;
-        }
-        // Dentro del canvas
-        if (stack.canvasRect().contains(pos)) {
-            if (capaValida() && stack.currentLocked()) {
-                if (currentTool != ToolPicker && currentTool != ToolZoom) { emit statusBarMessage(tr("Capa bloqueada")); return; }
-            }
-            if (currentTool == ToolPenBezier) {
-                bool completed = bezierTool.click(pos, zoomFactor, activeMouseButton == Qt::RightButton);
-                if (completed) bakeActivePath();
-                else update();
-                return;
-            }
-            QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
-            if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
-            if (currentTool == ToolSelect) {
-                if (vectorEditMode) return;
-                startPoint = pos;
-                selMgr.startRect(pos);
-                drawing = true;
-            } else if (currentTool == ToolSelectFree ||
-                       currentTool == ToolLassoExtract ||
-                       currentTool == ToolLassoDelete) {
-                if (vectorEditMode) return;
-                startPoint = pos;
-                selMgr.startFree(pos);
-                drawing = true;
-            } else if (currentTool == ToolMagicWand) {
-                magicWandSelect(pos, static_cast<int>(32 * mouseSensitivity));
-            } else if (currentTool == ToolBucket) {
-                saveHistoryState();
-                if (capaValida()) {
-                    PaintEngine::floodFill(stack.currentImage(), pos, colorDeUso);
-                    refreshAndNotify();
-                }
-            } else if (currentTool == ToolPicker) {
-                QColor picked = stack.compositedImage().pixelColor(pos);
-                emit colorPicked((activeMouseButton == Qt::LeftButton) ? 1 : 2, picked);
-            } else if (currentTool == ToolText) {
-                if (!textEdit.active) {
-                    int defaultW = qMax(100, stack.width() / 4);
-                    int defaultH = qMax(60, stack.height() / 8);
-                    QRect r(pos.x(), pos.y(), defaultW, defaultH);
-                    textEdit.beginNew(r, lastUsedTextFont, colorDeUso);
-                    emit textFrameClicked(pos);
-                    update();
-                }
-            } else if (currentTool == ToolGradient) {
-                if (event->modifiers() & Qt::AltModifier) {
-                    gradientType = (GradientType)(((int)gradientType + 1) % 3);
-                    emit statusBarMessage(tr("Gradiente: %1").arg(
-                        gradientType == GradientLinear ? tr("Lineal") :
-                        gradientType == GradientRadial ? tr("Radial") : tr("Cónico")));
-                    return;
-                }
-                if (event->modifiers() & Qt::ControlModifier) { openGradientSettings(); return; }
-                gradientStart = pos; gradientEnd = pos; drawingGradient = true;
-            } else if (currentTool == ToolClone) {
-                if (event->modifiers() & Qt::AltModifier || !cloneSourceSet) {
-                    cloneSource = pos; cloneSourceSet = true;
-                    if (capaValida()) cloneBuffer = stack.currentImage().copy();
-                    cloneInitialDest = pos;
-                    emit statusBarMessage(tr("Fuente fijada"));
-                    update(); return;
-                }
-                if (!cloneSourceSet) { emit statusBarMessage(tr("Alt+clic para fijar fuente")); return; }
-                saveHistoryState();
-                cloneInitialDest = pos; cloneIsStamping = true;
-                if (capaValida()) { applyClonStamp(stack.currentImage(), pos); invalidarTrazo(pos, pos); emit layersChanged(); }
-            } else if (currentTool == ToolMove) {
-                QPointF canvasPos(pos.x(), pos.y());
-                bool shiftHeld = (event->modifiers() & Qt::ShiftModifier);
-                int activeIdx = selMgr.activeObjectIndex();
-                if (!shiftHeld && activeIdx >= 0 && activeIdx < selMgr.objectCount() && selMgr.objectAt(activeIdx).selected) {
-                    ObjectHandle h = selMgr.findObjectGizmoHandleAt(activeIdx, canvasPos, zoomFactor);
-                    if (h == ObjectHandle::IntegrateToCanvas) { integrateSelectedObjects(); return; }
-                    if (h == ObjectHandle::EditText) { loadTextObjectForEditing(activeIdx); return; }
-                    if (h == ObjectHandle::EditShape) { loadShapeObjectForEditing(activeIdx); return; }
-                    if (h != ObjectHandle::None) {
-                        selMgr.setObjectActiveHandle(h);
-                        selMgr.setObjectDragStart(canvasPos);
-                        selMgr.setObjectRotationStart(selMgr.objectAt(activeIdx).rotation);
-                        selMgr.setObjectScaleStart(selMgr.objectAt(activeIdx).scaleX, selMgr.objectAt(activeIdx).scaleY);
-                        selMgr.setObjectBoundsStart(selMgr.objectAt(activeIdx).bounds);
-                        if (h == ObjectHandle::Move) selMgr.setObjectDragging(true);
-                        else if (h == ObjectHandle::Rotate) selMgr.setObjectRotating(true);
-                        else selMgr.setObjectScaling(true);
-                        setCursor(cursorForHandle(h));
-                        return;
-                    }
-                }
-                int hitObj = selMgr.findObjectAt(canvasPos);
-                if (hitObj >= 0) {
-                    if (shiftHeld) { selMgr.selectObject(hitObj, true); }
-                    else {
-                        if (!selMgr.objectAt(hitObj).selected) selMgr.selectObject(hitObj, false);
-                        selMgr.setObjectActiveHandle(ObjectHandle::Move);
-                        selMgr.setActiveObjectIndex(hitObj);
-                        selMgr.setObjectDragStart(canvasPos);
-                        selMgr.setObjectBoundsStart(selMgr.objectAt(hitObj).bounds);
-                        selMgr.setObjectDragging(true);
-                        setCursor(Qt::ClosedHandCursor);
-                    }
-                    return;
-                }
-                if (!selMgr.selectedObjectIndices().isEmpty()) { selMgr.deselectAllObjects(); return; }
-                if (puedeEditarCapaActual()) {
-                    saveHistoryState();
-                    movingLayer = true;
-                    moveStartPos = pos;
-                    moveLayerIdx = stack.currentIndex();
-                    moveLayerBackup = stack.currentImage().copy();
-                }
-            } else if (currentTool == ToolDeform) {
-                if (!puedeEditarCapaActual()) return;
-                saveHistoryState();
-                m_deform.begin(pos, &stack.currentImage(),
-                               activeMouseButton == Qt::RightButton);
-            } else {
-                saveHistoryState(); startPoint = pos; lastPoint = startPoint;
-                drawing = true; currentMousePos = pos;
-                strokeTotalLength = 0.0;
-                strokeAccumulatedLength = 0.0;
-                strokeInProgress = true;
-                QColor colorOpuesto = obtenerColorDeTrabajo(activeMouseButton == Qt::LeftButton ? Qt::RightButton : Qt::LeftButton);
-                strokeCanvasFallback = QColor();
-                bool necesitaMezcla = false;
-                if (usaStampDePincel()) necesitaMezcla = activePreset().wetMix;
-                if (necesitaMezcla) {
-                    strokeCanvasFallback = PaintEngine::sampleCanvasColor(stack.compositedImage(), pos, qMax(3, scaledWidth));
-                }
-                if (usaStampDePincel()) {
-                    const BrushSettings &preset = activePreset();
-                    lastClassicPoint = pos;
-                    lastCustomPoint = pos;
-                    if (preset.isAirbrush || preset.dragMode == DragMode::Scattered)
-                        continuousDrawTimer->start(16);
-                    if (capaValida()) {
-                        PaintEngine::applyCustomBrushStroke(stack.currentImage(), pos, activeStamp(),
-                            preset, mouseSensitivity, 0.0, 1.0, 1.0,
-                            colorDeUso, colorOpuesto, strokeCanvasFallback);
-                        invalidarTrazo(pos, pos); emit layersChanged();
-                    }
-                } else if ((currentTool == ToolPencil || currentTool == ToolEraser || currentTool == ToolMirrorPen || currentTool == ToolLighten) && pixelOptions.getIsPixelArtMode()) {
-                    if (capaValida()) {
-                        drawPixelArtPixel(stack.currentImage(), pos, colorDeUso, currentTool, true);
-                        invalidarTrazo(pos, pos); emit layersChanged();
-                    }
-                } else if (currentTool == ToolPencil) {
-                    if (capaValida()) {
-                        PaintEngine::applyGraphitePencil(stack.currentImage(), pos, pos, colorDeUso, scaledWidth, penOpacity);
-                        invalidarTrazo(pos, pos); emit layersChanged();
-                    }
-                } else if (currentTool == ToolEraser) {
-                    if (capaValida()) {
-                        PaintEngine::applyEraserLine(stack.currentImage(), pos, pos, scaledWidth, true);
-                        invalidarTrazo(pos, pos); emit layersChanged();
-                    }
-                } else if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
-                    RetouchTools::applyRetouchAlongLine(stack.currentImage(), pos, pos,
-                                                        penWidth, mouseSensitivity, penOpacity,
-                                                        retouchToolCode(currentTool));
-                    invalidarTrazo(pos, pos); emit layersChanged();
-                }
-            }
-        }
+bool PaintArea::handleMoveToolHover(const QPoint &pos) {
+    const QPointF canvasPos(pos.x(), pos.y());
+    const int activeIdx = selMgr.activeObjectIndex();
+    if (activeIdx >= 0 && activeIdx < selMgr.objectCount()
+        && selMgr.objectAt(activeIdx).selected) {
+        ObjectHandle h = selMgr.findObjectGizmoHandleAt(activeIdx, canvasPos, zoomFactor);
+        setCursor(cursorForHandle(h));
+    } else {
+        int hitObj = selMgr.findObjectAt(canvasPos);
+        setCursor(hitObj >= 0 ? Qt::SizeAllCursor : Qt::ArrowCursor);
+    }
+    return true;
+}
+
+bool PaintArea::handleMoveTool(QMouseEvent *event, const QPoint &pos) {
+    if (currentTool != ToolMove) return false;
+    if (event->buttons() & Qt::LeftButton) {
+        if (handleMoveObjectManipulation(event, pos)) return true;
+        if (handleMoveMovingLayer(pos))               return true;
+        return false;
+    }
+    return handleMoveToolHover(pos);
+}
+
+bool PaintArea::handleMoveSelectionHover(const QPoint &pos) {
+    if (!selMgr.isActive() || !selMgr.hasBuffer()) return false;
+    if (currentTool != ToolSelect && currentTool != ToolSelectFree && currentTool != ToolMove)
+        return false;
+    if (drawing) return false;
+
+    const QPointF cp(pos.x(), pos.y());
+    const QPointF convPos = selMgr.convertHandlePos(zoomFactor);
+    if (QLineF(cp, convPos).length() <= 12.0 / zoomFactor) {
+        setCursor(Qt::PointingHandCursor);
+    } else {
+        setCursor(cursorForHandle(selMgr.hitTestGizmoAt(cp, zoomFactor)));
+    }
+    return true;
+}
+
+void PaintArea::applyBrushStroke(const QPoint &pos, const QColor &colorDeUso, const QColor &colorOpuesto) {
+    if (!capaValida()) return;
+    const double segLen = QLineF(lastClassicPoint, QPointF(pos)).length();
+    strokeAccumulatedLength += segLen;
+    const double estimatedTotal = strokeAccumulatedLength + segLen * 10.0;
+    if (estimatedTotal > strokeTotalLength) strokeTotalLength = estimatedTotal;
+    PaintEngine::applyCustomBrushLine(stack.currentImage(), lastClassicPoint, pos,
+        activeStamp(), activePreset(),
+        mouseSensitivity, lastClassicPoint, colorDeUso, colorOpuesto, strokeCanvasFallback,
+        strokeTotalLength, strokeAccumulatedLength - segLen);
+}
+
+void PaintArea::applyPixelArtStroke(const QPoint &pos, const QColor &colorDeUso) {
+    if (capaValida())
+        drawPixelArtLine(stack.currentImage(), lastPoint, pos, colorDeUso, currentTool, true);
+}
+
+void PaintArea::applyPencilStroke(const QPoint &pos, const QColor &colorDeUso, int scaledWidth) {
+    if (capaValida())
+        PaintEngine::applyGraphitePencil(stack.currentImage(), lastPoint, pos, colorDeUso, scaledWidth, penOpacity);
+}
+
+void PaintArea::applyEraserStroke(const QPoint &pos, int scaledWidth) {
+    if (capaValida())
+        PaintEngine::applyEraserLine(stack.currentImage(), lastPoint, pos, scaledWidth, true);
+}
+
+void PaintArea::applyRetouchStroke(const QPoint &pos) {
+    RetouchTools::applyRetouchAlongLine(stack.currentImage(), lastPoint, pos,
+                                        penWidth, mouseSensitivity, penOpacity,
+                                        retouchToolCode(currentTool));
+}
+
+void PaintArea::updateSelectionPreview(const QRect &selPrevia, const QPoint &puntoPrevio, const QPoint &pos) {
+    if (currentTool == ToolSelect || currentTool == ToolSelectFree ||
+        currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
+        repintarZonaCanvas(selPrevia.united(selMgr.rect()).adjusted(-6, -6, 6, 6));
+    } else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
+        invalidarTrazo(puntoPrevio, pos, QRect(startPoint, puntoPrevio).normalized());
+    } else {
+        invalidarTrazo(puntoPrevio, pos);
     }
 }
 
-/// ========== mouseMoveEvent ==========
-void PaintArea::mouseMoveEvent(QMouseEvent *event) {
-    QPoint rawPos = event->position().toPoint();
-    QPoint pos(rawPos.x() / zoomFactor, rawPos.y() / zoomFactor);
-    hoverPos = rawPos;
-    previousMousePos = currentMousePos;
-    currentMousePos = pos;
-    int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
+bool PaintArea::handleMoveDrawing(const QPoint &pos, int scaledWidth) {
+    if (!drawing) return false;
 
-    if (stack.isEditingMask() && currentTool == ToolPenBezier && m_maskEdit.isDraggingNode()) {
-        if (m_maskEdit.moveBezierNode(pos)) { update(); return; }
-    }
-    if (drawing && stack.isEditingMask() && herramientaDePintura()) {
-        m_maskEdit.continueStroke(lastPoint, pos);
+    const QRect selPrevia = selMgr.rect();
+    QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
+    if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
+    QColor colorOpuesto = obtenerColorDeTrabajo(
+        activeMouseButton == Qt::LeftButton ? Qt::RightButton : Qt::LeftButton);
+    const QPoint puntoPrevio = lastPoint;
+
+    if (usaStampDePincel()) {
+        applyBrushStroke(pos, colorDeUso, colorOpuesto);
         lastPoint = pos;
-        return;
+    } else if ((currentTool == ToolPencil || currentTool == ToolEraser ||
+                currentTool == ToolMirrorPen || currentTool == ToolLighten)
+               && pixelOptions.getIsPixelArtMode()) {
+        applyPixelArtStroke(pos, colorDeUso);
+        lastPoint = pos;
+    } else if (currentTool == ToolSelect) {
+        selMgr.updateRect(startPoint, pos, stack.canvasSize());
+    } else if (currentTool == ToolSelectFree ||
+               currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
+        selMgr.updateFree(pos, stack.canvasSize());
+    } else if (currentTool == ToolPencil) {
+        applyPencilStroke(pos, colorDeUso, scaledWidth);
+        lastPoint = pos;
+    } else if (currentTool == ToolEraser) {
+        applyEraserStroke(pos, scaledWidth);
+        lastPoint = pos;
+    } else if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
+        applyRetouchStroke(pos);
+        lastPoint = pos;
+    } else {
+        lastPoint = pos;
     }
-    if (vectorEditMode && herramientaVectorizable()) {
-        vectorHoverPos = QPointF(pos.x(), pos.y());
-        if (draggingVectorPoint && selectedVectorPoint >= 0 && selectedVectorPoint < vectorPoints.size()) {
-            vectorPoints[selectedVectorPoint] = QPointF(pos.x(), pos.y());
-            update(); return;
-        }
-        bool overPoint = (findVectorPointAt(QPointF(pos.x(), pos.y())) >= 0);
-        bool overFirst = isNearFirstPoint(QPointF(pos.x(), pos.y()));
-        if (overFirst) setCursor(Qt::ClosedHandCursor);
-        else if (overPoint) setCursor(Qt::OpenHandCursor);
-        else setCursor(Qt::CrossCursor);
-        update(); return;
-    }
-    if (textEdit.active) {
-        if (textEdit.dragging) { textEdit.dragTo(pos); return; }
-        if (textEdit.resizing) { textEdit.resizeTo(pos, 20, 20); return; }
-    }
-    if (resizingCanvas) {
-        if (resizeMode == 1 || resizeMode == 3) previewCanvasSize.setX(qMax(50, int(rawPos.x() / zoomFactor)));
-        if (resizeMode == 2 || resizeMode == 3) previewCanvasSize.setY(qMax(50, int(rawPos.y() / zoomFactor)));
-        update(); return;
-    }
-    if (selMgr.isRotating()) {
-        selMgr.updateRotation(pos);
-        if (event->modifiers() & Qt::ShiftModifier) selMgr.snapRotation();
-        update(); return;
-    }
-    if (selMgr.isResizing()) {
-        bool keepAspect = (event->modifiers() & Qt::ShiftModifier);
-        selMgr.applyResize(selMgr.activeResizeHandle(), QPointF(pos.x(), pos.y()), keepAspect);
-        setCursor(cursorForHandle(selMgr.activeResizeHandle()));
-        update(); return;
-    }
-    if (selMgr.isDragging()) { selMgr.moveTo(pos); update(); return; }
-    if (drawingGradient && currentTool == ToolGradient) { gradientEnd = pos; update(); return; }
-    if (cloneIsStamping && currentTool == ToolClone && cloneSourceSet && (event->buttons() & Qt::LeftButton)) {
-        if (capaValida()) { applyClonStamp(stack.currentImage(), pos); invalidarTrazo(pos, pos); emit layersChanged(); }
-        invalidarPreviewClone(pos);
-        return;
-    }
-    if (m_deform.isActive() && currentTool == ToolDeform &&
-        (event->buttons() & (Qt::LeftButton | Qt::RightButton))) {
-        const QPoint prev = previousMousePos;
-        m_deform.continueStroke(pos);
-        invalidarTrazo(prev, pos);
-        return;
-    }
-    if (currentTool == ToolMove && (event->buttons() & Qt::LeftButton)) {
-        QPointF canvasPos(pos.x(), pos.y());
-        int activeIdx = selMgr.activeObjectIndex();
-        if (activeIdx >= 0 && activeIdx < selMgr.objectCount()) {
-            if (selMgr.isObjectDragging() && selMgr.objectActiveHandle() == ObjectHandle::Move) {
-                selMgr.moveActiveObject(canvasPos);
-                setCursor(Qt::ClosedHandCursor);
-                update(); return;
-            } else if (selMgr.isObjectRotating() && selMgr.objectActiveHandle() == ObjectHandle::Rotate) {
-                selMgr.rotateActiveObject(canvasPos, event->modifiers() & Qt::ShiftModifier);
-                setCursor(Qt::ClosedHandCursor);
-                update(); return;
-            } else if (selMgr.isObjectScaling()) {
-                selMgr.scaleActiveObject(canvasPos, event->modifiers() & Qt::ShiftModifier);
-                setCursor(cursorForHandle(selMgr.objectActiveHandle()));
-                update(); return;
-            }
-        }
-        if (movingLayer && moveLayerIdx >= 0 && moveLayerIdx < stack.count()) {
-            QPoint delta = pos - moveStartPos;
-            stack.layerAt(moveLayerIdx).image.fill(Qt::transparent);
-            QPainter p(&stack.layerAt(moveLayerIdx).image);
-            p.drawImage(delta.x(), delta.y(), moveLayerBackup);
-            p.end();
-            recomponerImagen();
-            emit layersChanged();
-            update(); return;
-        }
-    }
-    if (currentTool == ToolMove && !(event->buttons() & Qt::LeftButton)) {
-        QPointF canvasPos(pos.x(), pos.y());
-        int activeIdx = selMgr.activeObjectIndex();
-        if (activeIdx >= 0 && activeIdx < selMgr.objectCount() && selMgr.objectAt(activeIdx).selected) {
-            ObjectHandle h = selMgr.findObjectGizmoHandleAt(activeIdx, canvasPos, zoomFactor);
-            setCursor(cursorForHandle(h));
-        } else {
-            int hitObj = selMgr.findObjectAt(canvasPos);
-            if (hitObj >= 0) setCursor(Qt::SizeAllCursor);
-            else setCursor(Qt::ArrowCursor);
-        }
-        return;
-    }
-    if (selMgr.isActive() && selMgr.hasBuffer() && !(event->buttons() & Qt::LeftButton) && !drawing &&
-        (currentTool == ToolSelect || currentTool == ToolSelectFree || currentTool == ToolMove)) {
-        QPointF cp(pos.x(), pos.y());
-        QPointF convPos = selMgr.convertHandlePos(zoomFactor);
-        if (QLineF(cp, convPos).length() <= 12.0 / zoomFactor) {
-            setCursor(Qt::PointingHandCursor);
-        } else {
-            setCursor(cursorForHandle(selMgr.hitTestGizmoAt(cp, zoomFactor)));
-        }
-        return;
-    }
-    if (drawing) {
-        QRect selPrevia = selMgr.rect();
-        QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
-        if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
-        QColor colorOpuesto = obtenerColorDeTrabajo(activeMouseButton == Qt::LeftButton ? Qt::RightButton : Qt::LeftButton);
-        QPoint puntoPrevio = lastPoint;
-        if (usaStampDePincel()) {
-            if (capaValida()) {
-                double segLen = QLineF(lastClassicPoint, QPointF(pos)).length();
-                strokeAccumulatedLength += segLen;
-                double estimatedTotal = strokeAccumulatedLength + segLen * 10.0;
-                if (estimatedTotal > strokeTotalLength) strokeTotalLength = estimatedTotal;
-                PaintEngine::applyCustomBrushLine(stack.currentImage(), lastClassicPoint, pos,
-                    activeStamp(), activePreset(),
-                    mouseSensitivity, lastClassicPoint, colorDeUso, colorOpuesto, strokeCanvasFallback,
-                    strokeTotalLength, strokeAccumulatedLength - segLen);
-            }
-            lastPoint = pos;
-        } else if ((currentTool == ToolPencil || currentTool == ToolEraser || currentTool == ToolMirrorPen || currentTool == ToolLighten) && pixelOptions.getIsPixelArtMode()) {
-            if (capaValida()) {
-                drawPixelArtLine(stack.currentImage(), lastPoint, pos, colorDeUso, currentTool, true);
-            }
-            lastPoint = pos;
-        } else if (currentTool == ToolSelect) {
-            selMgr.updateRect(startPoint, pos, stack.canvasSize());
-        } else if (currentTool == ToolSelectFree || currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
-            selMgr.updateFree(pos, stack.canvasSize());
-        } else if (currentTool == ToolPencil) {
-            if (capaValida()) {
-                PaintEngine::applyGraphitePencil(stack.currentImage(), lastPoint, pos, colorDeUso, scaledWidth, penOpacity);
-            }
-            lastPoint = pos;
-        } else if (currentTool == ToolEraser) {
-            if (capaValida()) {
-                PaintEngine::applyEraserLine(stack.currentImage(), lastPoint, pos, scaledWidth, true);
-            }
-            lastPoint = pos;
-        } else if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
-            RetouchTools::applyRetouchAlongLine(stack.currentImage(), lastPoint, pos,
-                                                penWidth, mouseSensitivity, penOpacity,
-                                                retouchToolCode(currentTool));
-            lastPoint = pos;
-        } else { lastPoint = pos; }
-        if (currentTool == ToolSelect || currentTool == ToolSelectFree ||
-            currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
-            repintarZonaCanvas(selPrevia.united(selMgr.rect()).adjusted(-6, -6, 6, 6));
-        } else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
-            invalidarTrazo(puntoPrevio, pos, QRect(startPoint, puntoPrevio).normalized());
-        } else { invalidarTrazo(puntoPrevio, pos); }
-        return;
-    }
-    if (textEdit.active) {
-        TextEngine::Handle h = textEdit.hitHandleAt(pos);
-        setCursor(TextEngine::cursorForHandle(h));
-        update();
-        return;
-    }
+    updateSelectionPreview(selPrevia, puntoPrevio, pos);
+    return true;
+}
+
+bool PaintArea::handleMoveTextHover(const QPoint &pos) {
+    if (!textEdit.active) return false;
+    TextEngine::Handle h = textEdit.hitHandleAt(pos);
+    setCursor(TextEngine::cursorForHandle(h));
+    update();
+    return true;
+}
+
+void PaintArea::handleMoveCursorUpdate(const QPoint &pos) {
     setCursor(Qt::CrossCursor);
     if (currentTool == ToolZoom || currentTool == ToolPicker) setCursor(Qt::PointingHandCursor);
     else if (currentTool == ToolClone) setCursor(Qt::CrossCursor);
-    else if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn || currentTool == ToolDeform) setCursor(Qt::BlankCursor);
+    else if (currentTool == ToolBlur || currentTool == ToolHeal ||
+             currentTool == ToolShadowBurn || currentTool == ToolDeform)
+        setCursor(Qt::BlankCursor);
+
     if (currentTool == ToolClone && cloneSourceSet) invalidarPreviewClone(pos);
-    if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn || currentTool == ToolDeform ||
+
+    if (currentTool == ToolBlur || currentTool == ToolHeal ||
+        currentTool == ToolShadowBurn || currentTool == ToolDeform ||
         usaStampDePincel()) {
         update(rectSiluetaWidget(hoverPos).adjusted(-2, -2, 2, 2));
     } else if (currentTool == ToolPenBezier) {
@@ -2033,149 +2218,223 @@ void PaintArea::mouseMoveEvent(QMouseEvent *event) {
     }
 }
 
-/// ========== mouseReleaseEvent ==========
+/// ============================================================
+/// mouseReleaseEvent — dispatcher
+/// ============================================================
 void PaintArea::mouseReleaseEvent(QMouseEvent *event) {
-    if (event->button() == activeMouseButton) {
-        continuousDrawTimer->stop();
-        int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
-        m_maskEdit.endBezierDrag();
+    if (event->button() != activeMouseButton) return;
 
-        if (drawing && stack.isEditingMask() && herramientaDePintura()) {
-            m_maskEdit.endStroke();
-            drawing = false;
-            activeMouseButton = Qt::NoButton;
-            emit layersChanged();
-            update();
-            return;
+    continuousDrawTimer->stop();
+    const int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
+    m_maskEdit.endBezierDrag();
+
+    if (handleReleaseMaskPaint())         return;
+    if (handleReleaseVectorPoint())       return;
+    if (handleReleaseTextDragResize())    return;
+    if (handleReleaseCanvasResize())      return;
+    if (handleReleaseSelectionGizmo())    return;
+    if (handleReleaseGradient())          return;
+    if (handleReleaseClone())             return;
+    if (handleReleaseDeform())            return;
+    if (handleReleaseMove())              return;
+
+    if (drawing) {
+        const QPoint finalPoint(event->position().toPoint().x() / zoomFactor,
+                                event->position().toPoint().y() / zoomFactor);
+        handleReleaseDrawing(finalPoint, scaledWidth);
+    }
+}
+
+bool PaintArea::handleReleaseMaskPaint() {
+    if (!drawing || !stack.isEditingMask() || !herramientaDePintura()) return false;
+    m_maskEdit.endStroke();
+    drawing = false;
+    activeMouseButton = Qt::NoButton;
+    emit layersChanged();
+    update();
+    return true;
+}
+
+bool PaintArea::handleReleaseVectorPoint() {
+    if (!vectorEditMode || !draggingVectorPoint) return false;
+    draggingVectorPoint = false;
+    return true;
+}
+
+bool PaintArea::handleReleaseTextDragResize() {
+    if (textEdit.dragging) { textEdit.endDrag();   return true; }
+    if (textEdit.resizing) { textEdit.endResize(); return true; }
+    return false;
+}
+
+bool PaintArea::handleReleaseCanvasResize() {
+    if (!resizingCanvas) return false;
+    resizingCanvas = false;
+    cambiarDimensionesLienzo(previewCanvasSize.x(), previewCanvasSize.y());
+    resizeMode = 0;
+    return true;
+}
+
+bool PaintArea::handleReleaseSelectionGizmo() {
+    if (selMgr.isResizing()) { selMgr.setResizing(false); selMgr.setResizeHandle(ObjectHandle::None); return true; }
+    if (selMgr.isDragging()) { selMgr.setDragging(false); return true; }
+    if (selMgr.isRotating()) { selMgr.setRotating(false); return true; }
+    return false;
+}
+
+bool PaintArea::handleReleaseGradient() {
+    if (!drawingGradient || currentTool != ToolGradient) return false;
+    drawingGradient = false;
+    if (gradientStart != gradientEnd) {
+        saveHistoryState();
+        aplicarGradienteConfigurado(gradientStart, gradientEnd);
+        emit statusBarMessage(tr("Gradiente aplicado"));
+        refreshAndNotify();
+    } else {
+        update();
+    }
+    return true;
+}
+
+bool PaintArea::handleReleaseClone() {
+    if (!cloneIsStamping || currentTool != ToolClone) return false;
+    cloneIsStamping = false;
+    update();
+    return true;
+}
+
+bool PaintArea::handleReleaseDeform() {
+    if (!m_deform.isActive() || currentTool != ToolDeform) return false;
+    m_deform.end();
+    activeMouseButton = Qt::NoButton;
+    emit layersChanged();
+    update();
+    return true;
+}
+
+bool PaintArea::handleReleaseMove() {
+    if (currentTool != ToolMove) return false;
+    if (selMgr.isObjectDragging() || selMgr.isObjectRotating() || selMgr.isObjectScaling()) {
+        selMgr.stopObjectManipulation();
+        setCursor(Qt::ArrowCursor);
+        update();
+        return true;
+    }
+    if (movingLayer) {
+        movingLayer = false;
+        moveLayerBackup = QImage();
+        moveLayerIdx = -1;
+        update();
+        return true;
+    }
+    return false;
+}
+
+void PaintArea::finishLassoRelease() {
+    drawing = false;
+    selMgr.closeFreePath();
+    QPainterPath lassoPath = selMgr.path();
+    if (puedeEditarCapaActual()) {
+        saveHistoryState();
+        if (currentTool == ToolLassoExtract) {
+            stack.currentImage() = LassoProcessor::applyLassoExtract(
+                stack.currentImage(), lassoPath, pixelOptions.getIsPixelArtMode());
+            emit statusBarMessage(tr("Fondo recortado"));
+        } else {
+            LassoProcessor::applyLassoDelete(
+                stack.currentImage(), lassoPath, pixelOptions.getIsPixelArtMode());
+            emit statusBarMessage(tr("Objeto borrado"));
         }
-        if (vectorEditMode && draggingVectorPoint) { draggingVectorPoint = false; return; }
-        if (textEdit.dragging) { textEdit.endDrag(); return; }
-        if (textEdit.resizing) { textEdit.endResize(); return; }
-        if (resizingCanvas) { resizingCanvas = false; cambiarDimensionesLienzo(previewCanvasSize.x(), previewCanvasSize.y()); resizeMode = 0; return; }
-        if (selMgr.isResizing()) { selMgr.setResizing(false); selMgr.setResizeHandle(ObjectHandle::None); return; }
-        if (selMgr.isDragging()) { selMgr.setDragging(false); return; }
-        if (selMgr.isRotating()) { selMgr.setRotating(false); return; }
-        if (drawingGradient && currentTool == ToolGradient) {
-            drawingGradient = false;
-            if (gradientStart != gradientEnd) {
-                saveHistoryState();
-                aplicarGradienteConfigurado(gradientStart, gradientEnd);
-                emit statusBarMessage(tr("Gradiente aplicado"));
-                refreshAndNotify();
-            } else {
-                update();
-            }
-            return;
+        refreshAndNotify();
+    }
+    selMgr.discard();
+    update();
+    activeMouseButton = Qt::NoButton;
+}
+
+void PaintArea::finishSelectionRelease(const QPoint &finalPoint) {
+    drawing = false;
+    if (currentTool == ToolSelectFree) {
+        selMgr.closeFreePath();
+        const QRect selBounds = selMgr.path().boundingRect().toRect().intersected(stack.canvasRect());
+        if (selBounds.width() > 4 && selBounds.height() > 4) {
+            saveHistoryState();
+            selMgr.finalizeFree(stack.currentImage());
+            emit statusBarMessage(tr("Selección libre"));
+            refreshAndNotify();
         }
-        if (cloneIsStamping && currentTool == ToolClone) { cloneIsStamping = false; update(); return; }
-        if (m_deform.isActive() && currentTool == ToolDeform) {
-            m_deform.end();
-            activeMouseButton = Qt::NoButton;
-            emit layersChanged();
-            update();
-            return;
-        }
-        if (currentTool == ToolMove) {
-            if (selMgr.isObjectDragging() || selMgr.isObjectRotating() || selMgr.isObjectScaling()) {
-                selMgr.stopObjectManipulation();
-                setCursor(Qt::ArrowCursor);
-                update(); return;
-            }
-            if (movingLayer) { movingLayer = false; moveLayerBackup = QImage(); moveLayerIdx = -1; update(); return; }
-        }
-        if (drawing) {
-            strokeTotalLength = strokeAccumulatedLength;
-            strokeAccumulatedLength = 0.0;
-            strokeInProgress = false;
-            QPoint finalPoint(event->position().toPoint().x() / zoomFactor,
-                              event->position().toPoint().y() / zoomFactor);
-
-            // Lasso (extraer / borrar)
-            if (currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
-                drawing = false;
-                selMgr.closeFreePath();
-                QPainterPath lassoPath = selMgr.path();
-                if (puedeEditarCapaActual()) {
-                    saveHistoryState();
-                    if (currentTool == ToolLassoExtract) {
-                        stack.currentImage() = LassoProcessor::applyLassoExtract(
-                            stack.currentImage(), lassoPath, pixelOptions.getIsPixelArtMode());
-                        emit statusBarMessage(tr("Fondo recortado"));
-                    } else {
-                        LassoProcessor::applyLassoDelete(
-                            stack.currentImage(), lassoPath, pixelOptions.getIsPixelArtMode());
-                        emit statusBarMessage(tr("Objeto borrado"));
-                    }
-                    refreshAndNotify();
-                }
-                selMgr.discard();
-                update();
-                activeMouseButton = Qt::NoButton;
-                return;
-            }
-
-            // Selección (rect / free)
-            if (currentTool == ToolSelect || currentTool == ToolSelectFree) {
-                drawing = false;
-                if (currentTool == ToolSelectFree) {
-                    selMgr.closeFreePath();
-                    QRect selBounds = selMgr.path().boundingRect().toRect().intersected(stack.canvasRect());
-                    if (selBounds.width() > 4 && selBounds.height() > 4) {
-                        saveHistoryState();
-                        selMgr.finalizeFree(stack.currentImage());
-                        emit statusBarMessage(tr("Selección libre"));
-                        refreshAndNotify();
-                    }
-                } else {
-                    selMgr.updateRect(startPoint, finalPoint, stack.canvasSize());
-                    if (selMgr.rect().width() > 4 && selMgr.rect().height() > 4) {
-                        saveHistoryState();
-                        selMgr.finalizeRect(stack.currentImage());
-                        emit statusBarMessage(tr("Selección"));
-                        refreshAndNotify();
-                    }
-                }
-            }
-
-            // Figuras / PixelStroke
-            else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
-                QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
-                if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
-                if (pixelOptions.getIsPixelArtMode()) {
-                    if (capaValida()) {
-                        if ((currentTool == ToolPixelStroke || currentTool == ToolLine))
-                            drawPixelArtShape(stack.currentImage(), startPoint, finalPoint, colorDeUso, currentTool);
-                        else {
-                            QPainter painter(&stack.currentImage());
-                            painter.setRenderHint(QPainter::Antialiasing, false);
-                            painter.setPen(QPen(colorDeUso, scaledWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-                            PaintEngine::drawGeometry(painter, startPoint, finalPoint, currentTool);
-                            painter.end();
-                        }
-                        recomponerImagen();
-                    }
-                } else if (ToolCategories::isShapeTool(currentTool)) {
-                    selMgr.registerShapeObject(currentTool, startPoint, finalPoint, colorDeUso, colorDeUso, scaledWidth, stack.currentIndex());
-                } else {
-                    if (capaValida()) {
-                        QPainter painter(&stack.currentImage());
-                        painter.setRenderHint(QPainter::Antialiasing, true);
-                        painter.setPen(QPen(colorDeUso, scaledWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-                        PaintEngine::drawGeometry(painter, startPoint, finalPoint, currentTool);
-                        painter.end(); recomponerImagen();
-                    }
-                }
-            }
-
-            emit layersChanged();
-            drawing = false;
-            activeMouseButton = Qt::NoButton;
-            update();
+    } else {
+        selMgr.updateRect(startPoint, finalPoint, stack.canvasSize());
+        if (selMgr.rect().width() > 4 && selMgr.rect().height() > 4) {
+            saveHistoryState();
+            selMgr.finalizeRect(stack.currentImage());
+            emit statusBarMessage(tr("Selección"));
+            refreshAndNotify();
         }
     }
 }
 
-/// ========== wheelEvent ==========
+void PaintArea::finishShapeRelease(const QPoint &finalPoint, int scaledWidth) {
+    QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
+    if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
+
+    if (pixelOptions.getIsPixelArtMode()) {
+        if (!capaValida()) return;
+        if (currentTool == ToolPixelStroke || currentTool == ToolLine) {
+            drawPixelArtShape(stack.currentImage(), startPoint, finalPoint, colorDeUso, currentTool);
+        } else {
+            QPainter painter(&stack.currentImage());
+            painter.setRenderHint(QPainter::Antialiasing, false);
+            painter.setPen(QPen(colorDeUso, scaledWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            PaintEngine::drawGeometry(painter, startPoint, finalPoint, currentTool);
+            painter.end();
+        }
+        recomponerImagen();
+        return;
+    }
+
+    if (ToolCategories::isShapeTool(currentTool)) {
+        selMgr.registerShapeObject(currentTool, startPoint, finalPoint,
+                                   colorDeUso, colorDeUso, scaledWidth, stack.currentIndex());
+        return;
+    }
+    if (capaValida()) {
+        QPainter painter(&stack.currentImage());
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(QPen(colorDeUso, scaledWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        PaintEngine::drawGeometry(painter, startPoint, finalPoint, currentTool);
+        painter.end();
+        recomponerImagen();
+    }
+}
+
+bool PaintArea::handleReleaseDrawing(const QPoint &finalPoint, int scaledWidth) {
+    if (!drawing) return false;
+
+    strokeTotalLength = strokeAccumulatedLength;
+    strokeAccumulatedLength = 0.0;
+    strokeInProgress = false;
+
+    if (currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
+        finishLassoRelease();
+        return true;
+    }
+    if (currentTool == ToolSelect || currentTool == ToolSelectFree) {
+        finishSelectionRelease(finalPoint);
+    } else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
+        finishShapeRelease(finalPoint, scaledWidth);
+    }
+
+    emit layersChanged();
+    drawing = false;
+    activeMouseButton = Qt::NoButton;
+    update();
+    return true;
+}
+
+/// ============================================================
+/// wheelEvent
+/// ============================================================
 void PaintArea::wheelEvent(QWheelEvent *event) {
     QPoint localPos = event->position().toPoint();
     QPoint viewportPos = mapToParent(localPos);
@@ -2188,13 +2447,46 @@ void PaintArea::wheelEvent(QWheelEvent *event) {
     event->accept();
 }
 
-/// ========== paintEvent ==========
+/// ============================================================
+/// paintEvent — dispatcher
+/// ============================================================
 void PaintArea::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, false);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
-    int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
-    QRect canvasRect(0, 0, (int)(stack.width() * zoomFactor), (int)(stack.height() * zoomFactor));
+    const int scaledWidth = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
+
+    paintCheckerboard(painter, QRect(0, 0, (int)(stack.width() * zoomFactor),
+                                            (int)(stack.height() * zoomFactor)));
+    renderTiles(painter, event->rect());
+
+    painter.save();
+    painter.scale(zoomFactor, zoomFactor);
+
+    if (pixelOptions.isGridActive())
+        drawPixelArtGrid(painter, stack.compositedImage(), pixelOptions.getGridSize(), zoomFactor);
+
+    selMgr.drawAllObjects(painter);
+
+    paintMaskOverlay(painter);
+    paintBezierOverlay(painter);
+    paintCanvasResizePreview(painter);
+    paintShapePreview(painter, scaledWidth);
+    paintActiveSelection(painter);
+    paintVectorEditOverlay(painter);
+    paintSelectionPreview(painter);
+    paintTextFrame(painter);
+    paintGradientPreview(painter);
+    paintCloneOverlay(painter);
+    paintSelectionGizmos(painter);
+
+    painter.restore();
+
+    paintCanvasHandles(painter);
+    paintCursorSilhouette(painter, scaledWidth);
+}
+
+void PaintArea::paintCheckerboard(QPainter &painter, const QRect &canvasRect) {
     static const QPixmap checker = []() {
         QPixmap c(16, 16); c.fill(QColor(255, 255, 255));
         QPainter pc(&c);
@@ -2204,236 +2496,274 @@ void PaintArea::paintEvent(QPaintEvent *event) {
         return c;
     }();
     painter.fillRect(canvasRect, QBrush(checker));
-    renderTiles(painter, event->rect());
-    painter.save();
-    painter.scale(zoomFactor, zoomFactor);
+}
 
-    if (pixelOptions.isGridActive())
-        drawPixelArtGrid(painter, stack.compositedImage(), pixelOptions.getGridSize(), zoomFactor);
+void PaintArea::paintMaskOverlay(QPainter &painter) {
+    if (!stack.isEditingMask()) return;
 
-    selMgr.drawAllObjects(painter);
+    const QImage &rubylithImg = stack.ensureRubylith(stack.maskEditLayer(), stack.canvasSize());
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    painter.drawImage(0, 0, rubylithImg);
 
-    // Máscara
-    if (stack.isEditingMask()) {
-        const QImage &rubylithImg = stack.ensureRubylith(stack.maskEditLayer(), stack.canvasSize());
-        painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
-        painter.drawImage(0, 0, rubylithImg);
-        painter.setPen(QPen(QColor(220, 40, 60), 2.0 / zoomFactor, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRect(stack.canvasRect());
-        painter.setPen(Qt::white);
-        QFont labFont; labFont.setPixelSize(qMax(10, (int)(12 / zoomFactor))); labFont.setBold(true);
-        painter.setFont(labFont);
-        painter.fillRect(0, 0, 320 / zoomFactor, 20 / zoomFactor, QColor(220, 40, 60, 200));
-        painter.drawText(4 / zoomFactor, 15 / zoomFactor, tr("MÁSCARA: negro oculta / blanco revela"));
-        if (currentTool == ToolPenBezier && m_maskEdit.hasBezierNodes()) {
-            m_maskEdit.paintBezierOverlay(painter, zoomFactor);
-        }
-    }
+    painter.setPen(QPen(QColor(220, 40, 60), 2.0 / zoomFactor, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(stack.canvasRect());
 
-    // Bezier activo (no máscara)
-    if (currentTool == ToolPenBezier && !stack.isEditingMask()) {
+    painter.setPen(Qt::white);
+    QFont labFont;
+    labFont.setPixelSize(qMax(10, (int)(12 / zoomFactor)));
+    labFont.setBold(true);
+    painter.setFont(labFont);
+    painter.fillRect(0, 0, 320 / zoomFactor, 20 / zoomFactor, QColor(220, 40, 60, 200));
+    painter.drawText(4 / zoomFactor, 15 / zoomFactor,
+                     tr("MÁSCARA: negro oculta / blanco revela"));
+
+    if (currentTool == ToolPenBezier && m_maskEdit.hasBezierNodes())
+        m_maskEdit.paintBezierOverlay(painter, zoomFactor);
+}
+
+void PaintArea::paintBezierOverlay(QPainter &painter) {
+    if (currentTool == ToolPenBezier && !stack.isEditingMask())
         bezierTool.paint(painter, zoomFactor);
-    }
+}
 
-    // Preview de redimensión del lienzo
-    if (resizingCanvas) {
-        painter.setPen(QPen(darkModeActive ? Qt::white : Qt::black, 1.5 / zoomFactor, Qt::DashLine));
-        painter.drawRect(0, 0, previewCanvasSize.x(), previewCanvasSize.y());
-    }
+void PaintArea::paintCanvasResizePreview(QPainter &painter) {
+    if (!resizingCanvas) return;
+    painter.setPen(QPen(darkModeActive ? Qt::white : Qt::black,
+                        1.5 / zoomFactor, Qt::DashLine));
+    painter.drawRect(0, 0, previewCanvasSize.x(), previewCanvasSize.y());
+}
 
-    // Preview de figuras
-    if (drawing && (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke)) {
-        QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
-        if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
-        if ((currentTool == ToolPixelStroke || currentTool == ToolLine) && pixelOptions.getIsPixelArtMode())
-            drawPixelArtShape(stack.currentImage(), startPoint, lastPoint, colorDeUso, currentTool);
-        else {
-            painter.setPen(QPen(colorDeUso, scaledWidth, Qt::DashLine, Qt::RoundCap, Qt::RoundJoin));
-            painter.setBrush(Qt::NoBrush);
-            PaintEngine::drawGeometry(painter, startPoint, lastPoint, currentTool);
-        }
-    }
+void PaintArea::paintShapePreview(QPainter &painter, int scaledWidth) {
+    if (!drawing) return;
+    if (!ToolCategories::isShapeTool(currentTool) && currentTool != ToolPixelStroke) return;
 
-    // Selección activa
-    if (selMgr.isActive() && selMgr.hasBuffer()) {
+    QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
+    if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
+
+    if ((currentTool == ToolPixelStroke || currentTool == ToolLine)
+        && pixelOptions.getIsPixelArtMode()) {
+        drawPixelArtShape(stack.currentImage(), startPoint, lastPoint, colorDeUso, currentTool);
+    } else {
+        painter.setPen(QPen(colorDeUso, scaledWidth, Qt::DashLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        PaintEngine::drawGeometry(painter, startPoint, lastPoint, currentTool);
+    }
+}
+
+void PaintArea::paintActiveSelection(QPainter &painter) {
+    if (selMgr.isActive() && selMgr.hasBuffer())
         selMgr.drawSelectionOverlay(painter, zoomFactor);
+}
+
+void PaintArea::paintVectorEditOverlay(QPainter &painter) {
+    if (!vectorEditMode || !herramientaVectorizable() || vectorPoints.isEmpty()) return;
+
+    QColor vectorCol = colorVectorActivo();
+    painter.setPen(QPen(vectorCol, 2.0 / zoomFactor, Qt::SolidLine));
+    painter.setBrush(Qt::NoBrush);
+
+    QPainterPath vpath;
+    vpath.moveTo(vectorPoints.first());
+    for (int i = 1; i < vectorPoints.size(); ++i) vpath.lineTo(vectorPoints[i]);
+    painter.drawPath(vpath);
+
+    painter.setPen(QPen(vectorCol, 1.5 / zoomFactor, Qt::DashLine));
+    painter.drawLine(vectorPoints.last(), vectorHoverPos);
+
+    if (isNearFirstPoint(vectorHoverPos) && vectorPoints.size() >= 3) {
+        painter.setPen(QPen(vectorCol, 2.5 / zoomFactor, Qt::SolidLine));
+        painter.drawLine(vectorPoints.last(), vectorPoints.first());
     }
 
-    // Vector edit
-    if (vectorEditMode && herramientaVectorizable() && !vectorPoints.isEmpty()) {
-        QColor vectorCol = colorVectorActivo();
-        painter.setPen(QPen(vectorCol, 2.0 / zoomFactor, Qt::SolidLine));
+    const double pointRadius = 5.0 / zoomFactor;
+    for (int i = 0; i < vectorPoints.size(); ++i) {
+        const QPointF &pt = vectorPoints[i];
+        const bool isFirst = (i == 0);
+        const bool isSelectedNode = (i == selectedVectorPoint);
+
+        painter.setPen(QPen(Qt::white, 1.5 / zoomFactor));
+        if (isFirst) {
+            painter.setBrush(vectorCol);
+            const double r = pointRadius * 1.3;
+            painter.drawRect(QRectF(pt.x() - r, pt.y() - r, r * 2, r * 2));
+        } else {
+            painter.setBrush(isSelectedNode ? QColor(239, 68, 68) : vectorCol);
+            painter.drawEllipse(pt, pointRadius, pointRadius);
+        }
+    }
+}
+
+void PaintArea::paintSelectionPreview(QPainter &painter) {
+    if (!drawing) return;
+    if (currentTool != ToolSelect && currentTool != ToolSelectFree &&
+        currentTool != ToolLassoExtract && currentTool != ToolLassoDelete) return;
+
+    painter.setPen(QPen((currentTool == ToolLassoExtract || currentTool == ToolLassoDelete)
+                        ? QColor(255, 0, 150) : selBlue(),
+                        1.5 / zoomFactor, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    if (currentTool == ToolSelect) painter.drawRect(selMgr.rect());
+    else painter.drawPath(selMgr.path());
+}
+
+void PaintArea::paintTextFrame(QPainter &painter) {
+    if (!textEdit.active) return;
+    TextEngine::Style ts = currentTextStyle();
+    ts.handleSize = textEdit.handleSize;
+    textEdit.paint(painter, zoomFactor, ts);
+}
+
+void PaintArea::paintGradientPreview(QPainter &painter) {
+    if (!drawingGradient || currentTool != ToolGradient) return;
+
+    QColor c1 = gradientReverse ? penColor2 : penColor1;
+    QColor c2;
+    if (gradientUseSecondColor) c2 = gradientReverse ? penColor1 : penColor2;
+    else { c2 = c1; c2.setAlpha(0); }
+    c1.setAlpha(gradientOpacity);
+    c2.setAlpha(gradientUseSecondColor ? gradientOpacity : 0);
+
+    QGradient *grad = nullptr;
+    switch (gradientType) {
+        case GradientLinear:
+            grad = new QLinearGradient(gradientStart, gradientEnd);
+            break;
+        case GradientRadial: {
+            int radius = qMax(1, (int)sqrt(pow(gradientEnd.x() - gradientStart.x(), 2) +
+                                            pow(gradientEnd.y() - gradientStart.y(), 2)));
+            grad = new QRadialGradient(gradientStart, radius);
+            break;
+        }
+        case GradientConic:
+            grad = new QConicalGradient(gradientStart, gradientAngle);
+            break;
+    }
+    if (grad) {
+        grad->setColorAt(0.0, c1);
+        grad->setColorAt(1.0, c2);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(*grad);
+        painter.setOpacity(0.85);
+        painter.drawRect(stack.canvasRect());
+        painter.setOpacity(1.0);
+        delete grad;
+    }
+
+    painter.setPen(QPen(QColor(255, 80, 80), 2.0 / zoomFactor, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(gradientStart, gradientEnd);
+    painter.setBrush(QColor(255, 80, 80, 220));
+    painter.drawEllipse(QPointF(gradientStart), 6.0 / zoomFactor, 6.0 / zoomFactor);
+    painter.drawEllipse(QPointF(gradientEnd), 6.0 / zoomFactor, 6.0 / zoomFactor);
+
+    painter.setPen(Qt::white);
+    QFont infoFont;
+    infoFont.setPixelSize(qMax(10, (int)(12 / zoomFactor)));
+    painter.setFont(infoFont);
+    QString info = QString("%1 | %2° | %3% | %4")
+        .arg(gradientType == GradientLinear ? "Lineal" :
+             gradientType == GradientRadial ? "Radial" : "Cónico")
+        .arg(gradientAngle)
+        .arg(qRound(gradientOpacity / 255.0 * 100))
+        .arg(gradientUseSecondColor ? "2col" : "→ Transp");
+    painter.drawText(gradientStart.x() + 10 / zoomFactor,
+                     gradientStart.y() - 10 / zoomFactor, info);
+}
+
+void PaintArea::paintCloneOverlay(QPainter &painter) {
+    if (currentTool != ToolClone || !cloneSourceSet) return;
+
+    QPoint offset = cloneSource - cloneInitialDest;
+    QPoint currentSource = currentMousePos + offset;
+    int brushSize = qMax(1, static_cast<int>(penWidth * mouseSensitivity)) * 2;
+
+    painter.setPen(QPen(QColor(100, 200, 255), 2.0 / zoomFactor, Qt::SolidLine));
+    painter.setBrush(QColor(100, 200, 255, 40));
+    painter.drawEllipse(cloneSource, brushSize, brushSize);
+
+    painter.setPen(QPen(QColor(100, 200, 255), 1.0 / zoomFactor, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(cloneSource, QPoint(currentMousePos.x(), currentMousePos.y()));
+
+    if (cloneIsStamping) {
+        painter.setPen(QPen(QColor(255, 200, 100), 1.5 / zoomFactor, Qt::DotLine));
         painter.setBrush(Qt::NoBrush);
-        QPainterPath vpath;
-        vpath.moveTo(vectorPoints.first());
-        for (int i = 1; i < vectorPoints.size(); ++i) vpath.lineTo(vectorPoints[i]);
-        painter.drawPath(vpath);
-        painter.setPen(QPen(vectorCol, 1.5 / zoomFactor, Qt::DashLine));
-        painter.drawLine(vectorPoints.last(), vectorHoverPos);
-        if (isNearFirstPoint(vectorHoverPos) && vectorPoints.size() >= 3) {
-            painter.setPen(QPen(vectorCol, 2.5 / zoomFactor, Qt::SolidLine));
-            painter.drawLine(vectorPoints.last(), vectorPoints.first());
-        }
-        double pointRadius = 5.0 / zoomFactor;
-        for (int i = 0; i < vectorPoints.size(); ++i) {
-            const QPointF &pt = vectorPoints[i];
-            bool isFirst = (i == 0);
-            bool isSelectedNode = (i == selectedVectorPoint);
-            painter.setPen(QPen(Qt::white, 1.5 / zoomFactor));
-            if (isFirst) {
-                painter.setBrush(vectorCol);
-                double r = pointRadius * 1.3;
-                painter.drawRect(QRectF(pt.x() - r, pt.y() - r, r * 2, r * 2));
-            } else {
-                painter.setBrush(isSelectedNode ? QColor(239, 68, 68) : vectorCol);
-                painter.drawEllipse(pt, pointRadius, pointRadius);
-            }
-        }
+        painter.drawEllipse(currentSource, brushSize, brushSize);
     }
+}
 
-    // Preview de la selección
-    if (drawing && (currentTool == ToolSelect || currentTool == ToolSelectFree ||
-                    currentTool == ToolLassoExtract || currentTool == ToolLassoDelete)) {
-        painter.setPen(QPen((currentTool == ToolLassoExtract || currentTool == ToolLassoDelete)
-                            ? QColor(255, 0, 150) : selBlue(),
-                            1.5 / zoomFactor, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        if (currentTool == ToolSelect) painter.drawRect(selMgr.rect());
-        else painter.drawPath(selMgr.path());
-    }
-
-    // Texto (via TextEngine)
-    if (textEdit.active) {
-        TextEngine::Style ts = currentTextStyle();
-        ts.handleSize = textEdit.handleSize;
-        textEdit.paint(painter, zoomFactor, ts);
-    }
-
-    // Gradiente
-    if (drawingGradient && currentTool == ToolGradient) {
-        QColor c1 = gradientReverse ? penColor2 : penColor1;
-        QColor c2;
-        if (gradientUseSecondColor) { c2 = gradientReverse ? penColor1 : penColor2; }
-        else { c2 = c1; c2.setAlpha(0); }
-        c1.setAlpha(gradientOpacity);
-        c2.setAlpha(gradientUseSecondColor ? gradientOpacity : 0);
-        QGradient *grad = nullptr;
-        switch (gradientType) {
-            case GradientLinear: grad = new QLinearGradient(gradientStart, gradientEnd); break;
-            case GradientRadial: {
-                int radius = qMax(1, (int)sqrt(pow(gradientEnd.x() - gradientStart.x(), 2) +
-                                                pow(gradientEnd.y() - gradientStart.y(), 2)));
-                grad = new QRadialGradient(gradientStart, radius); break;
-            }
-            case GradientConic: grad = new QConicalGradient(gradientStart, gradientAngle); break;
-        }
-        if (grad) {
-            grad->setColorAt(0.0, c1);
-            grad->setColorAt(1.0, c2);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(*grad);
-            painter.setOpacity(0.85);
-            painter.drawRect(stack.canvasRect());
-            painter.setOpacity(1.0);
-            delete grad;
-        }
-        painter.setPen(QPen(QColor(255, 80, 80), 2.0 / zoomFactor, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawLine(gradientStart, gradientEnd);
-        painter.setBrush(QColor(255, 80, 80, 220));
-        painter.drawEllipse(QPointF(gradientStart), 6.0 / zoomFactor, 6.0 / zoomFactor);
-        painter.drawEllipse(QPointF(gradientEnd), 6.0 / zoomFactor, 6.0 / zoomFactor);
-        painter.setPen(Qt::white);
-        QFont infoFont;
-        infoFont.setPixelSize(qMax(10, (int)(12 / zoomFactor)));
-        painter.setFont(infoFont);
-        QString info = QString("%1 | %2° | %3% | %4")
-            .arg(gradientType == GradientLinear ? "Lineal" :
-                 gradientType == GradientRadial ? "Radial" : "Cónico")
-            .arg(gradientAngle)
-            .arg(qRound(gradientOpacity / 255.0 * 100))
-            .arg(gradientUseSecondColor ? "2col" : "→ Transp");
-        painter.drawText(gradientStart.x() + 10 / zoomFactor, gradientStart.y() - 10 / zoomFactor, info);
-    }
-
-    // Clonar
-    if (currentTool == ToolClone && cloneSourceSet) {
-        QPoint offset = cloneSource - cloneInitialDest;
-        QPoint currentSource = currentMousePos + offset;
-        int brushSize = qMax(1, static_cast<int>(penWidth * mouseSensitivity)) * 2;
-        painter.setPen(QPen(QColor(100, 200, 255), 2.0 / zoomFactor, Qt::SolidLine));
-        painter.setBrush(QColor(100, 200, 255, 40));
-        painter.drawEllipse(cloneSource, brushSize, brushSize);
-        painter.setPen(QPen(QColor(100, 200, 255), 1.0 / zoomFactor, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawLine(cloneSource, QPoint(currentMousePos.x(), currentMousePos.y()));
-        if (cloneIsStamping) {
-            painter.setPen(QPen(QColor(255, 200, 100), 1.5 / zoomFactor, Qt::DotLine));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawEllipse(currentSource, brushSize, brushSize);
-        }
-    }
-
-    // Gizmos de Move
-    if (currentTool == ToolMove) {
+void PaintArea::paintSelectionGizmos(QPainter &painter) {
+    if (currentTool == ToolMove)
         selMgr.drawObjectGizmos(painter, zoomFactor, darkModeActive);
-    }
-    if (selMgr.isActive() && selMgr.hasBuffer()) {
+    if (selMgr.isActive() && selMgr.hasBuffer())
         selMgr.drawSelectionGizmo(painter, zoomFactor, darkModeActive, selBlue(), selBlueLight());
-    }
+}
 
-    painter.restore();
-
-    // Handles del canvas
+void PaintArea::paintCanvasHandles(QPainter &painter) {
     painter.setPen(QPen(darkModeActive ? Qt::white : QColor("#404040"), 1));
     painter.setBrush(Qt::white);
     painter.drawRect(getRightHandle());
     painter.drawRect(getBottomHandle());
     painter.drawRect(getBottomRightHandle());
+}
 
-    // Siluetas de pincel bajo el cursor
-    if (rect().contains(hoverPos) && !textEdit.active && !vectorEditMode) {
-        if (stack.isEditingMask() && herramientaDePintura()) {
-            painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 140) : QColor(0, 0, 0, 120), 1, Qt::DashLine));
-            painter.setBrush(Qt::NoBrush);
-            BrushSettings cfg;
-            if (usaStampDePincel()) cfg = activePreset();
-            else {
-                cfg.shape = ShapeType::Circle;
-                cfg.dragMode = DragMode::Continuous;
-                cfg.rotationMode = RotationMode::Fixed;
-                cfg.size = qMax(5, (int)(penWidth * mouseSensitivity * 2));
-            }
-            double sSize = qMax(4, cfg.size) * zoomFactor;
-            painter.save();
-            painter.setRenderHint(QPainter::Antialiasing, true);
-            PaintEngine::drawBrushSilhouette(painter, cfg, sSize, hoverPos);
-            painter.restore();
-        } else if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
-            painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 180) : QColor(0, 0, 0, 150), 1));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawEllipse(QPointF(hoverPos),
-                (double)((scaledWidth * 2 + 2) * zoomFactor),
-                (double)((scaledWidth * 2 + 2) * zoomFactor));
-        } else if (currentTool == ToolDeform) {
-            m_deform.paintOverlay(painter, hoverPos, zoomFactor, darkModeActive);
-        } else if (currentTool == ToolClone && cloneSourceSet) {
-            painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 200) : QColor(0, 0, 0, 180), 1.5));
-            painter.setBrush(Qt::NoBrush);
-            int brushSize = (scaledWidth * 2) * zoomFactor;
-            painter.drawEllipse(QPointF(hoverPos), (double)brushSize, (double)brushSize);
-            painter.drawLine(hoverPos.x() - 4, hoverPos.y(), hoverPos.x() + 4, hoverPos.y());
-            painter.drawLine(hoverPos.x(), hoverPos.y() - 4, hoverPos.x(), hoverPos.y() + 4);
-        } else if (usaStampDePincel()) {
-            painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 120) : QColor(0, 0, 0, 100), 1, Qt::DashLine));
-            painter.setBrush(Qt::NoBrush);
-            double sSize = activePreset().size * zoomFactor;
-            painter.save();
-            painter.setRenderHint(QPainter::Antialiasing, true);
-            PaintEngine::drawBrushSilhouette(painter, activePreset(), sSize, hoverPos);
-            painter.restore();
+void PaintArea::paintCursorSilhouette(QPainter &painter, int scaledWidth) {
+    if (!rect().contains(hoverPos) || textEdit.active || vectorEditMode) return;
+
+    if (stack.isEditingMask() && herramientaDePintura()) {
+        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 140) : QColor(0, 0, 0, 120),
+                            1, Qt::DashLine));
+        painter.setBrush(Qt::NoBrush);
+        BrushSettings cfg;
+        if (usaStampDePincel()) cfg = activePreset();
+        else {
+            cfg.shape = ShapeType::Circle;
+            cfg.dragMode = DragMode::Continuous;
+            cfg.rotationMode = RotationMode::Fixed;
+            cfg.size = qMax(5, (int)(penWidth * mouseSensitivity * 2));
         }
+        double sSize = qMax(4, cfg.size) * zoomFactor;
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        PaintEngine::drawBrushSilhouette(painter, cfg, sSize, hoverPos);
+        painter.restore();
+        return;
+    }
+
+    if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
+        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 180) : QColor(0, 0, 0, 150), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawEllipse(QPointF(hoverPos),
+            (double)((scaledWidth * 2 + 2) * zoomFactor),
+            (double)((scaledWidth * 2 + 2) * zoomFactor));
+        return;
+    }
+
+    if (currentTool == ToolDeform) {
+        m_deform.paintOverlay(painter, hoverPos, zoomFactor, darkModeActive);
+        return;
+    }
+
+    if (currentTool == ToolClone && cloneSourceSet) {
+        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 200) : QColor(0, 0, 0, 180), 1.5));
+        painter.setBrush(Qt::NoBrush);
+        int brushSize = (scaledWidth * 2) * zoomFactor;
+        painter.drawEllipse(QPointF(hoverPos), (double)brushSize, (double)brushSize);
+        painter.drawLine(hoverPos.x() - 4, hoverPos.y(), hoverPos.x() + 4, hoverPos.y());
+        painter.drawLine(hoverPos.x(), hoverPos.y() - 4, hoverPos.x(), hoverPos.y() + 4);
+        return;
+    }
+
+    if (usaStampDePincel()) {
+        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 120) : QColor(0, 0, 0, 100),
+                            1, Qt::DashLine));
+        painter.setBrush(Qt::NoBrush);
+        double sSize = activePreset().size * zoomFactor;
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        PaintEngine::drawBrushSilhouette(painter, activePreset(), sSize, hoverPos);
+        painter.restore();
     }
 }
 
