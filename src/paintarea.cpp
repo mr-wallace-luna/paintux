@@ -120,9 +120,7 @@ QColor PaintArea::selBlue() const { return darkModeActive ? QColor("#60a5fa") : 
 QColor PaintArea::selBlueLight() const { return darkModeActive ? QColor("#93c5fd") : QColor("#3b82f6"); }
 
 bool PaintArea::herramientaVectorizable() const {
-    return currentTool == ToolSelectFree ||
-           currentTool == ToolLassoExtract ||
-           currentTool == ToolLassoDelete;
+    return ToolCategories::isVectorizableTool(currentTool);
 }
 
 QColor PaintArea::colorVectorActivo() const {
@@ -132,13 +130,7 @@ QColor PaintArea::colorVectorActivo() const {
 }
 
 bool PaintArea::herramientaDePintura() const {
-    return currentTool == ToolPencil || currentTool == ToolEraser ||
-           currentTool == ToolBrush || currentTool == ToolSpray ||
-           currentTool == ToolCrayon || currentTool == ToolMarker ||
-           currentTool == ToolWatercolor || currentTool == ToolOilBrush ||
-           currentTool == ToolCalligraphy || currentTool == ToolHighlighter ||
-           currentTool == ToolCustomBrush || currentTool == ToolMirrorPen ||
-           currentTool == ToolLighten;
+    return ToolCategories::isPaintingTool(currentTool);
 }
 
 /// ========== Helpers colapsadores ==========
@@ -1382,78 +1374,221 @@ int PaintArea::getPixelResolution() const { return pixelOptions.getResolution();
 bool PaintArea::getVectorEditMode() const { return vectorEditMode; }
 void PaintArea::editTextObject(int idx) { loadTextObjectForEditing(idx); }
 
-/// ========== keyPressEvent ==========
+/// ============================================================
+/// keyPressEvent — dispatcher delgado (Extract Method)
+/// ============================================================
 void PaintArea::keyPressEvent(QKeyEvent *event) {
-    if (stack.isEditingMask() && currentTool == ToolPenBezier && m_maskEdit.hasBezierNodes() && !textEdit.active) {
-        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { m_maskEdit.rasterizeBezier(zoomFactor); return; }
-        if (event->key() == Qt::Key_Escape) { m_maskEdit.cancelBezier(); update(); return; }
-        if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && m_maskEdit.selectedNode() >= 0) {
-            m_maskEdit.removeSelectedNode(); update(); return;
-        }
-    }
-    if ((event->modifiers() & Qt::ControlModifier) && !textEdit.active) {
-        if (event->key() == Qt::Key_C) { copiarSeleccion(); return; }
-        if (event->key() == Qt::Key_X) { cortarSeleccion(); return; }
-        if (event->key() == Qt::Key_V) { pegarClipboard(); return; }
-    }
-    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && !textEdit.active) {
-        borrarSeleccion();
+    // Orden de prioridad: primero lo más específico, al final lo genérico.
+    if (handleMaskBezierKeys(event))      return;
+    if (handleClipboardShortcuts(event))  return;
+    if (handleDeleteKey(event))           return;
+    if (handleObjectShortcuts(event))     return;
+    if (handleVectorModeKeys(event))      return;
+    if (handleTextEditingKeys(event))     return;
+    if (handleToolSpecificKeys(event))    return;
+    if (handleBezierPenKeys(event))       return;
+
+    // Fallback: Enter/Return global hornea pendientes.
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        bakeActivePath();
+        bakeSelection();
         return;
     }
-    if (event->key() == Qt::Key_O && !textEdit.active) { convertSelectionToObject(); return; }
-    if (event->key() == Qt::Key_I && !textEdit.active) { integrateSelectedObjects(); return; }
-    if (event->key() == Qt::Key_V && !textEdit.active && herramientaVectorizable()) {
-        if (selMgr.isActive() && !vectorEditMode) { emit statusBarMessage(tr("Deselecciona primero")); return; }
-        vectorEditMode = !vectorEditMode;
-        if (vectorEditMode) {
-            vectorPoints.clear(); selectedVectorPoint = -1;
-            selMgr.setPath(QPainterPath());
-            drawing = false;
-            emit statusBarMessage(tr("Modo vector"));
-        } else {
-            vectorPoints.clear(); selectedVectorPoint = -1;
-            emit statusBarMessage(tr("Modo libre"));
-        }
-        emit vectorModeChanged(vectorEditMode); update(); return;
-    }
-    if (vectorEditMode && herramientaVectorizable()) {
-        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { finalizeVectorPath(); return; }
-        if (event->key() == Qt::Key_Escape) { cancelVectorMode(); emit statusBarMessage(tr("Cancelado")); return; }
-        if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && selectedVectorPoint >= 0) {
-            vectorPoints.removeAt(selectedVectorPoint); selectedVectorPoint = -1; update(); return;
-        }
-    }
-    if (textEdit.active) {
-        if (event->key() == Qt::Key_Escape) { cancelTextFrame(); emit textFrameCancelled(); return; }
-        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { textEdit.insertNewline(); return; }
-        if (event->key() == Qt::Key_Backspace) { textEdit.backspace(); return; }
-        if (event->key() == Qt::Key_Delete) { textEdit.deleteChar(); return; }
-        if (event->key() == Qt::Key_Left) { textEdit.moveLeft(); return; }
-        if (event->key() == Qt::Key_Right) { textEdit.moveRight(); return; }
-        if (event->key() == Qt::Key_Home) { textEdit.moveHome(); return; }
-        if (event->key() == Qt::Key_End) { textEdit.moveEnd(); return; }
-        QString txt = event->text();
-        if (!txt.isEmpty() && txt.at(0).isPrint()) { textEdit.insert(txt); return; }
-    }
-    if (currentTool == ToolMove) {
-        if (event->key() == Qt::Key_Escape) { selMgr.deselectAllObjects(); movingLayer = false; update(); return; }
-    }
-    if (currentTool == ToolGradient && event->key() == Qt::Key_G && (event->modifiers() & Qt::ControlModifier)) {
-        openGradientSettings(); return;
-    }
-    if (currentTool == ToolPenBezier && !bezierTool.isEmpty()) {
-        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-            if (bezierTool.finalize()) bakeActivePath();
-            return;
-        }
-        if (event->key() == Qt::Key_Escape) {
-            bezierTool.cancel();
-            update();
-            return;
-        }
-    }
-    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { bakeActivePath(); bakeSelection(); }
     QWidget::keyPressEvent(event);
+}
+
+/// ------------------------------------------------------------
+/// 1) Enter/Esc/Delete en Bezier de máscara (prioridad alta)
+/// ------------------------------------------------------------
+bool PaintArea::handleMaskBezierKeys(QKeyEvent *event) {
+    if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
+    if (!m_maskEdit.hasBezierNodes() || textEdit.active)         return false;
+
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        m_maskEdit.rasterizeBezier(zoomFactor);
+        return true;
+    }
+    if (event->key() == Qt::Key_Escape) {
+        m_maskEdit.cancelBezier();
+        update();
+        return true;
+    }
+    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+        && m_maskEdit.selectedNode() >= 0) {
+        m_maskEdit.removeSelectedNode();
+        update();
+        return true;
+    }
+    return false;
+}
+
+/// ------------------------------------------------------------
+/// 2) Ctrl+C / Ctrl+X / Ctrl+V (portapapeles)
+/// ------------------------------------------------------------
+bool PaintArea::handleClipboardShortcuts(QKeyEvent *event) {
+    if (!(event->modifiers() & Qt::ControlModifier)) return false;
+    if (textEdit.active) return false;
+
+    if (event->key() == Qt::Key_C) { copiarSeleccion(); return true; }
+    if (event->key() == Qt::Key_X) { cortarSeleccion(); return true; }
+    if (event->key() == Qt::Key_V) { pegarClipboard();  return true; }
+    return false;
+}
+
+/// ------------------------------------------------------------
+/// 3) Delete / Backspace (borrar selección)
+/// ------------------------------------------------------------
+bool PaintArea::handleDeleteKey(QKeyEvent *event) {
+    if (textEdit.active) return false;
+    if (event->key() != Qt::Key_Delete && event->key() != Qt::Key_Backspace) return false;
+    borrarSeleccion();
+    return true;
+}
+
+/// ------------------------------------------------------------
+/// 4) O / I (convertir selección en objeto / integrar objetos)
+/// ------------------------------------------------------------
+bool PaintArea::handleObjectShortcuts(QKeyEvent *event) {
+    if (textEdit.active) return false;
+
+    if (event->key() == Qt::Key_O) { convertSelectionToObject();  return true; }
+    if (event->key() == Qt::Key_I) { integrateSelectedObjects();  return true; }
+    return false;
+}
+
+/// ------------------------------------------------------------
+/// 5) V (toggle modo vector) + Enter/Esc/Delete en modo vector
+/// ------------------------------------------------------------
+bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
+    if (textEdit.active) return false;
+
+    // Toggle con V
+    if (event->key() == Qt::Key_V && herramientaVectorizable() && !vectorEditMode) {
+        if (selMgr.isActive()) { emit statusBarMessage(tr("Deselecciona primero")); return true; }
+        vectorEditMode = true;
+        vectorPoints.clear();
+        selectedVectorPoint = -1;
+        selMgr.setPath(QPainterPath());
+        drawing = false;
+        emit statusBarMessage(tr("Modo vector"));
+        emit vectorModeChanged(true);
+        update();
+        return true;
+    }
+
+    // Si ya estamos en modo vector y usamos una tool vectorizable, no consumimos nada.
+    // El toggle "apagado" se hace desde la propia tool.
+    if (!vectorEditMode || !herramientaVectorizable()) return false;
+
+    if (event->key() == Qt::Key_V) {
+        // Toggle off
+        vectorEditMode = false;
+        vectorPoints.clear();
+        selectedVectorPoint = -1;
+        emit statusBarMessage(tr("Modo libre"));
+        emit vectorModeChanged(false);
+        update();
+        return true;
+    }
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        finalizeVectorPath();
+        return true;
+    }
+    if (event->key() == Qt::Key_Escape) {
+        cancelVectorMode();
+        emit statusBarMessage(tr("Cancelado"));
+        return true;
+    }
+    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+        && selectedVectorPoint >= 0) {
+        vectorPoints.removeAt(selectedVectorPoint);
+        selectedVectorPoint = -1;
+        update();
+        return true;
+    }
+    return false;
+}
+
+/// ------------------------------------------------------------
+/// 6) Teclas dentro del frame de texto activo
+/// ------------------------------------------------------------
+bool PaintArea::handleTextEditingKeys(QKeyEvent *event) {
+    if (!textEdit.active) return false;
+
+    switch (event->key()) {
+        case Qt::Key_Escape:
+            cancelTextFrame();
+            emit textFrameCancelled();
+            return true;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            textEdit.insertNewline();
+            return true;
+        case Qt::Key_Backspace:
+            textEdit.backspace();
+            return true;
+        case Qt::Key_Delete:
+            textEdit.deleteChar();
+            return true;
+        case Qt::Key_Left:
+            textEdit.moveLeft();
+            return true;
+        case Qt::Key_Right:
+            textEdit.moveRight();
+            return true;
+        case Qt::Key_Home:
+            textEdit.moveHome();
+            return true;
+        case Qt::Key_End:
+            textEdit.moveEnd();
+            return true;
+        default:
+            break;
+    }
+
+    const QString txt = event->text();
+    if (!txt.isEmpty() && txt.at(0).isPrint()) {
+        textEdit.insert(txt);
+        return true;
+    }
+    return false;
+}
+
+/// ------------------------------------------------------------
+/// 7) Teclas específicas de la tool activa (Esc en Move, Ctrl+G en Gradient)
+/// ------------------------------------------------------------
+bool PaintArea::handleToolSpecificKeys(QKeyEvent *event) {
+    if (currentTool == ToolMove && event->key() == Qt::Key_Escape) {
+        selMgr.deselectAllObjects();
+        movingLayer = false;
+        update();
+        return true;
+    }
+    if (currentTool == ToolGradient
+        && event->key() == Qt::Key_G
+        && (event->modifiers() & Qt::ControlModifier)) {
+        openGradientSettings();
+        return true;
+    }
+    return false;
+}
+
+/// ------------------------------------------------------------
+/// 8) Enter/Esc en BezierPathTool (pluma Bézier normal)
+/// ------------------------------------------------------------
+bool PaintArea::handleBezierPenKeys(QKeyEvent *event) {
+    if (currentTool != ToolPenBezier || bezierTool.isEmpty()) return false;
+
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        if (bezierTool.finalize()) bakeActivePath();
+        return true;
+    }
+    if (event->key() == Qt::Key_Escape) {
+        bezierTool.cancel();
+        update();
+        return true;
+    }
+    return false;
 }
 
 /// ========== mousePressEvent ==========
@@ -1674,7 +1809,7 @@ void PaintArea::mousePressEvent(QMouseEvent *event) {
                 }
                 if (usaStampDePincel()) {
                     const BrushSettings &preset = activePreset();
-                    lastClassicPoint = pos; // (lastCustomPoint se actualiza también, no se usa en este flujo)
+                    lastClassicPoint = pos;
                     lastCustomPoint = pos;
                     if (preset.isAirbrush || preset.dragMode == DragMode::Scattered)
                         continuousDrawTimer->start(16);
@@ -1873,7 +2008,7 @@ void PaintArea::mouseMoveEvent(QMouseEvent *event) {
         if (currentTool == ToolSelect || currentTool == ToolSelectFree ||
             currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
             repintarZonaCanvas(selPrevia.united(selMgr.rect()).adjusted(-6, -6, 6, 6));
-        } else if (esHerramientaFigura(currentTool) || currentTool == ToolPixelStroke) {
+        } else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
             invalidarTrazo(puntoPrevio, pos, QRect(startPoint, puntoPrevio).normalized());
         } else { invalidarTrazo(puntoPrevio, pos); }
         return;
@@ -2003,7 +2138,7 @@ void PaintArea::mouseReleaseEvent(QMouseEvent *event) {
             }
 
             // Figuras / PixelStroke
-            else if (esHerramientaFigura(currentTool) || currentTool == ToolPixelStroke) {
+            else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
                 QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
                 if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
                 if (pixelOptions.getIsPixelArtMode()) {
@@ -2019,7 +2154,7 @@ void PaintArea::mouseReleaseEvent(QMouseEvent *event) {
                         }
                         recomponerImagen();
                     }
-                } else if (esHerramientaFigura(currentTool)) {
+                } else if (ToolCategories::isShapeTool(currentTool)) {
                     selMgr.registerShapeObject(currentTool, startPoint, finalPoint, colorDeUso, colorDeUso, scaledWidth, stack.currentIndex());
                 } else {
                     if (capaValida()) {
@@ -2108,7 +2243,7 @@ void PaintArea::paintEvent(QPaintEvent *event) {
     }
 
     // Preview de figuras
-    if (drawing && (esHerramientaFigura(currentTool) || currentTool == ToolPixelStroke)) {
+    if (drawing && (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke)) {
         QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
         if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
         if ((currentTool == ToolPixelStroke || currentTool == ToolLine) && pixelOptions.getIsPixelArtMode())
