@@ -3,65 +3,126 @@
 #include "tools/TextEngine.h"
 #include "core/MaskEditController.h"
 
-/// EXIF helpers
+#include <memory>
+
+// ============================================================
+// EXIF helpers — parsing modular
+// ============================================================
+
+namespace {
+
+constexpr int kExifTagOrientation  = 0x0112;
+constexpr int kExifIfdEntrySize    = 12;
+constexpr int kExifHeaderLen       = 14;
+constexpr int kExifMaxOrientation  = 8;
+
+constexpr uchar kMarkerSoi         = 0xD8;
+constexpr uchar kMarkerExifApp1    = 0xE1;
+constexpr uchar kMarkerRstStart    = 0xD0;
+constexpr uchar kMarkerRstEnd      = 0xD9;
+
+inline bool isJpegStandaloneMarker(uchar m) {
+    return m == kMarkerSoi || m == 0x01 ||
+           (m >= kMarkerRstStart && m <= kMarkerRstEnd);
+}
+
+inline bool isExifApp1Segment(const uchar *seg, int segData) {
+    return segData >= kExifHeaderLen &&
+           seg[0] == 'E' && seg[1] == 'x' && seg[2] == 'i' && seg[3] == 'f' &&
+           seg[4] == 0 && seg[5] == 0;
+}
+
+inline bool isLittleEndianTIFF(const uchar *tiff) {
+    return tiff[0] == 'I' && tiff[1] == 'I';
+}
+
+inline bool isBigEndianTIFF(const uchar *tiff) {
+    return tiff[0] == 'M' && tiff[1] == 'M';
+}
+
+int findOrientationInIFD0(const PaintArea::ExifTiffReader &reader) {
+    const int ifd0 = reader.rd32(4);
+    if (ifd0 <= 0 || ifd0 + 2 > reader.tiffLen) return 1;
+
+    const int entries = reader.rd16(ifd0);
+    for (int i = 0; i < entries; ++i) {
+        const int entry = ifd0 + 2 + i * kExifIfdEntrySize;
+        if (entry + kExifIfdEntrySize > reader.tiffLen) break;
+        if (reader.rd16(entry) != kExifTagOrientation) continue;
+        const int val = reader.rd16(entry + 8);
+        return (val >= 1 && val <= kExifMaxOrientation) ? val : 1;
+    }
+    return 1;
+}
+
+int parseExifSegment(const uchar *seg, int segData) {
+    if (!isExifApp1Segment(seg, segData)) return 1;
+
+    const uchar *tiff = seg + 6;
+    const int tiffLen = segData - 6;
+    if (tiffLen < 8) return 1;
+
+    PaintArea::ExifTiffReader reader;
+    if (isLittleEndianTIFF(tiff)) {
+        reader.tiff = tiff; reader.tiffLen = tiffLen; reader.little = true;
+    } else if (isBigEndianTIFF(tiff)) {
+        reader.tiff = tiff; reader.tiffLen = tiffLen; reader.little = false;
+    } else {
+        return 1;
+    }
+    return findOrientationInIFD0(reader);
+}
+
+} // namespace
+
+// ----------------------------------------
+// ExifTiffReader
+// ----------------------------------------
+int PaintArea::ExifTiffReader::rd16(int off) const {
+    if (off < 0 || off + 1 >= tiffLen) return 0;
+    return little ? (tiff[off] | (tiff[off + 1] << 8))
+                  : ((tiff[off] << 8) | tiff[off + 1]);
+}
+
+int PaintArea::ExifTiffReader::rd32(int off) const {
+    if (off < 0 || off + 3 >= tiffLen) return 0;
+    return little
+        ? (tiff[off] | (tiff[off+1] << 8) | (tiff[off+2] << 16) | (tiff[off+3] << 24))
+        : ((tiff[off] << 24) | (tiff[off+1] << 16) | (tiff[off+2] << 8) | tiff[off+3]);
+}
+
+// ----------------------------------------
+// Función pública principal
+// ----------------------------------------
 int leerOrientacionExif(const QString &filePath) {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) return 1;
-    QByteArray data = file.read(65536);
+    const QByteArray data = file.read(65536);
     file.close();
-    const uchar *d = (const uchar *)data.constData();
-    int len = data.size();
-    if (len < 4 || d[0] != 0xFF || d[1] != 0xD8) return 1;
+
+    const uchar *d = reinterpret_cast<const uchar *>(data.constData());
+    const int len = data.size();
+    if (len < 4 || d[0] != 0xFF || d[1] != kMarkerSoi) return 1;
+
     int pos = 2;
     while (pos + 4 < len) {
-        if (d[pos] != 0xFF) { pos++; continue; }
-        uchar marker = d[pos + 1];
-        if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD9)) { pos += 2; continue; }
-        int segLen = (d[pos + 2] << 8) | d[pos + 3];
+        if (d[pos] != 0xFF) { ++pos; continue; }
+
+        const uchar marker = d[pos + 1];
+        if (isJpegStandaloneMarker(marker)) { pos += 2; continue; }
+
+        const int segLen = (d[pos + 2] << 8) | d[pos + 3];
         if (segLen < 2) break;
-        if (marker == 0xE1 && pos + 2 + segLen <= len) {
-            const uchar *seg = d + pos + 4;
-            int segData = segLen - 2;
-            if (segData >= 14 &&
-                seg[0] == 'E' && seg[1] == 'x' && seg[2] == 'i' && seg[3] == 'f' &&
-                seg[4] == 0 && seg[5] == 0) {
-                const uchar *tiff = seg + 6;
-                int tiffLen = segData - 6;
-                if (tiffLen < 8) return 1;
-                bool little;
-                if (tiff[0] == 'I' && tiff[1] == 'I') little = true;
-                else if (tiff[0] == 'M' && tiff[1] == 'M') little = false;
-                else return 1;
-                auto rd16 = [&](int off) -> int {
-                    if (off < 0 || off + 1 >= tiffLen) return 0;
-                    return little ? (tiff[off] | (tiff[off + 1] << 8))
-                                  : ((tiff[off] << 8) | tiff[off + 1]);
-                };
-                auto rd32 = [&](int off) -> int {
-                    if (off < 0 || off + 3 >= tiffLen) return 0;
-                    return little ? (tiff[off] | (tiff[off+1] << 8) | (tiff[off+2] << 16) | (tiff[off+3] << 24))
-                                  : ((tiff[off] << 24) | (tiff[off+1] << 16) | (tiff[off+2] << 8) | tiff[off+3]);
-                };
-                int ifd0 = rd32(4);
-                if (ifd0 <= 0 || ifd0 + 2 > tiffLen) return 1;
-                int entries = rd16(ifd0);
-                for (int i = 0; i < entries; ++i) {
-                    int entry = ifd0 + 2 + i * 12;
-                    if (entry + 12 > tiffLen) break;
-                    if (rd16(entry) == 0x0112) {
-                        int val = rd16(entry + 8);
-                        return (val >= 1 && val <= 8) ? val : 1;
-                    }
-                }
-                return 1;
-            }
+
+        if (marker == kMarkerExifApp1 && pos + 2 + segLen <= len) {
+            const int result = parseExifSegment(d + pos + 4, segLen - 2);
+            if (result > 1) return result;
         }
         pos += 2 + segLen;
     }
     return 1;
 }
 
-/// Aplica orientación EXIF a imagen
 QImage aplicaOrientacionExif(const QImage &img, int orientation) {
     switch (orientation) {
         case 2: return img.mirrored(true, false);
@@ -75,7 +136,6 @@ QImage aplicaOrientacionExif(const QImage &img, int orientation) {
     }
 }
 
-/// Carga imagen respetando EXIF
 QImage cargarImagenRespetandoExif(const QString &filePath) {
     QImage img(filePath);
     if (img.isNull()) return img;
@@ -119,21 +179,12 @@ void FrameThumbnail::mousePressEvent(QMouseEvent *) { emit clicked(frameIndex); 
 QColor PaintArea::selBlue() const { return darkModeActive ? QColor("#60a5fa") : QColor("#2563eb"); }
 QColor PaintArea::selBlueLight() const { return darkModeActive ? QColor("#93c5fd") : QColor("#3b82f6"); }
 
-bool PaintArea::herramientaVectorizable() const {
-    return ToolCategories::isVectorizableTool(currentTool);
-}
-
 QColor PaintArea::colorVectorActivo() const {
     if (currentTool == ToolLassoDelete)  return QColor(236, 72, 153);
     if (currentTool == ToolLassoExtract) return QColor(59, 130, 246);
     return QColor(16, 185, 129);
 }
 
-bool PaintArea::herramientaDePintura() const {
-    return ToolCategories::isPaintingTool(currentTool);
-}
-
-/// ========== Helpers colapsadores ==========
 const BrushSettings& PaintArea::activePreset() const {
     if (ArtisticPresets::isArtisticTool(currentTool)) return classicToolPreset;
     if (currentTool == ToolCustomBrush) return customBrushPresets[activeCustomBrushIndex];
@@ -171,7 +222,6 @@ void PaintArea::beginEdit() {
     saveHistoryState();
 }
 
-/// Mapea ToolType de retoque al código numérico que usa RetouchTools.
 static int retouchToolCode(ToolType t) {
     switch (t) {
         case ToolBlur:        return 201;
@@ -181,7 +231,6 @@ static int retouchToolCode(ToolType t) {
     }
 }
 
-/// Configura MaskEditController
 void PaintArea::configureMaskEditController() {
     MaskEditController::Context ctx;
     ctx.maskRef = [this]() -> QImage& {
@@ -216,7 +265,6 @@ void PaintArea::configureMaskEditController() {
     m_maskEdit.onStatusMessage = [this](const QString &msg) { emit statusBarMessage(msg); };
 }
 
-/// ========== Helpers de margen / invalidación ==========
 int PaintArea::margenHerramienta() const {
     int sw = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
     if (usaStampDePincel()) {
@@ -284,7 +332,6 @@ void PaintArea::invalidarPreviewClone(const QPoint &cursorPos) {
     }
 }
 
-/// ========== Tiles / sincronización con animación ==========
 void PaintArea::renderTiles(QPainter &painter, const QRect &visibleWidgetRect) {
     if (!stack.tilesValid()) return;
     QRect canvasVisible(
@@ -404,7 +451,6 @@ void PaintArea::openGradientSettings() {
     }
 }
 
-/// ========== Selección y objetos ==========
 void PaintArea::bakeObjectIntoLayer(int idx) {
     if (idx < 0 || idx >= selMgr.objectCount()) return;
     const PaintObject &obj = selMgr.objectAt(idx);
@@ -485,12 +531,10 @@ void PaintArea::loadShapeObjectForEditing(int idx) {
     }
 }
 
-/// ========== Handles del canvas ==========
 QRect PaintArea::getRightHandle() const { return QRect(stack.width() * zoomFactor, stack.height() * zoomFactor / 2 - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE); }
 QRect PaintArea::getBottomHandle() const { return QRect(stack.width() * zoomFactor / 2 - HANDLE_SIZE/2, stack.height() * zoomFactor, HANDLE_SIZE, HANDLE_SIZE); }
 QRect PaintArea::getBottomRightHandle() const { return QRect(stack.width() * zoomFactor, stack.height() * zoomFactor, HANDLE_SIZE, HANDLE_SIZE); }
 
-/// ========== Vector helpers ==========
 int PaintArea::findVectorPointAt(const QPointF &canvasPos) const {
     double threshold = 8.0 / zoomFactor;
     for (int i = 0; i < vectorPoints.size(); ++i) {
@@ -554,7 +598,6 @@ void PaintArea::updateClassicToolStamp() {
     classicToolStampRight = PaintEngine::generateBrushStamp(classicToolPreset, rightBase, penOpacity, pixelOptions.getIsPixelArtMode(), secondR);
 }
 
-/// ========== Constructor ==========
 PaintArea::PaintArea(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StaticContents);
     setMouseTracking(true);
@@ -587,7 +630,6 @@ PaintArea::PaintArea(QWidget *parent) : QWidget(parent) {
     updateCustomBrushStamp();
 }
 
-/// ========== Setters básicos ==========
 void PaintArea::setActiveColorTarget(int target) {
     activeColorTarget = target;
     if (usaStampDePincel()) updateClassicToolStamp();
@@ -598,7 +640,6 @@ void PaintArea::setMouseSensitivity(double sens) {
 }
 double PaintArea::getMouseSensitivity() const { return mouseSensitivity; }
 
-/// ========== Bezier / pinceles custom ==========
 void PaintArea::bakeActivePath() {
     if (bezierTool.isEmpty()) return;
     if (!capaValida()) { bezierTool.reset(); return; }
@@ -640,7 +681,6 @@ void PaintArea::setCustomBrushPresets(BrushSettings p1, BrushSettings p2, int ac
 BrushSettings PaintArea::getCustomBrush(int index) const { return customBrushPresets[index]; }
 int PaintArea::getActiveCustomBrushIndex() const { return activeCustomBrushIndex; }
 
-/// ========== Máscaras B/N ==========
 bool PaintArea::hasLayerMask(int layerIndex) const { return stack.hasMask(layerIndex); }
 bool PaintArea::isLayerMaskEnabled(int layerIndex) const { return stack.isMaskEnabled(layerIndex); }
 int PaintArea::getMaskEditLayer() const { return stack.maskEditLayer(); }
@@ -701,7 +741,6 @@ void PaintArea::invertLayerMask(int layerIndex) {
     refreshAndNotify();
 }
 
-/// ========== Máscaras de color ==========
 bool PaintArea::hasLayerColorMask(int layerIndex) const { return stack.hasColorMask(layerIndex); }
 bool PaintArea::isLayerColorMaskEnabled(int layerIndex) const { return stack.isColorMaskEnabled(layerIndex); }
 FilterParams PaintArea::getLayerColorMaskParams(int layerIndex) const { return stack.colorMaskParams(layerIndex); }
@@ -745,7 +784,6 @@ void PaintArea::clearLiveColorMaskPreview(int layerIndex) {
     refreshAndNotify();
 }
 
-/// ========== Capas ==========
 void PaintArea::addLayer() {
     if (stack.isEmpty()) return;
     stack.addLayer(tr("Capa %1").arg(stack.count() + 1));
@@ -861,7 +899,6 @@ void PaintArea::magicWandSelect(const QPoint &pos, int tolerance) {
     refreshAndNotify();
 }
 
-/// ========== Pixel Art ==========
 void PaintArea::setPixelArtMode(bool active, int resolution) {
     pixelOptions.setPixelArtMode(active, resolution);
     clearHistory();
@@ -905,7 +942,6 @@ void PaintArea::setPixelArtResolution(int resolution) {
     }
 }
 
-/// ========== Frames ==========
 void PaintArea::addFrame() {
     if (!pixelOptions.getIsPixelArtMode()) return;
     saveHistoryState(); guardarFrameActualEnAnimador();
@@ -948,7 +984,6 @@ void PaintArea::prevFrame() {
     }
 }
 
-/// ========== Historial ==========
 void PaintArea::clearHistory() { undoStack.clear(); redoStack.clear(); }
 void PaintArea::saveHistoryState() {
     if (capaValida()) {
@@ -980,7 +1015,6 @@ void PaintArea::redo() {
     update();
 }
 
-/// ========== Colores / pincel / zoom ==========
 void PaintArea::setPenColor1(const QColor &c) { penColor1 = c; refreshBrushStamps(); }
 void PaintArea::setPenColor2(const QColor &c) { penColor2 = c; refreshBrushStamps(); }
 void PaintArea::refreshBrushStamps() {
@@ -1028,7 +1062,6 @@ QSize PaintArea::canvasSize() const { return stack.canvasSize(); }
 void PaintArea::setDarkMode(bool enabled) { darkModeActive = enabled; update(); }
 bool PaintArea::getDarkMode() const { return darkModeActive; }
 
-/// ========== Gradiente ==========
 void PaintArea::setGradientType(int t) { gradientType = (GradientType)qBound(0, t, 2); }
 int PaintArea::getGradientType() const { return (int)gradientType; }
 int PaintArea::getGradientOpacity() const { return gradientOpacity; }
@@ -1044,7 +1077,6 @@ void PaintArea::setGradientBlendMode(int m) { gradientBlendMode = m; }
 bool PaintArea::getGradientUseSecondColor() const { return gradientUseSecondColor; }
 void PaintArea::setGradientUseSecondColor(bool v) { gradientUseSecondColor = v; }
 
-/// ========== Clonar ==========
 bool PaintArea::isCloneSourceSet() const { return cloneSourceSet; }
 void PaintArea::resetCloneSource() {
     cloneSourceSet = false;
@@ -1052,7 +1084,6 @@ void PaintArea::resetCloneSource() {
     cloneIsStamping = false;
 }
 
-/// ========== setTool ==========
 void PaintArea::setTool(ToolType tool) {
     if (tool != ToolPenBezier) {
         bakeActivePath();
@@ -1082,7 +1113,6 @@ void PaintArea::setTool(ToolType tool) {
     update();
 }
 
-/// ========== Limpiar / nuevo lienzo ==========
 void PaintArea::clearImage() {
     saveHistoryState();
     bakeAllPending();
@@ -1125,7 +1155,6 @@ void PaintArea::crearNuevoLienzo(int w, int h, bool transparent) {
     }
 }
 
-/// ========== Abrir / guardar ==========
 bool PaintArea::abrirImagen(const QString &fileName) {
     bakeAllPending();
     QImage nuevaImagen = cargarImagenRespetandoExif(fileName);
@@ -1189,7 +1218,6 @@ bool PaintArea::guardarComoGif(const QString &fileName, int delayMs, int scale) 
     return encoder.save(fileName, frames, delayMs, true, scale);
 }
 
-/// ========== Selecciones / Texto ==========
 void PaintArea::bakeSelection() {
     if (selMgr.isActive() && selMgr.hasBuffer()) {
         if (puedeEditarCapaActual()) {
@@ -1235,7 +1263,6 @@ QColor PaintArea::getTextFrameColor() const { return textEdit.color; }
 void PaintArea::insertTextChar(const QString &ch) { textEdit.insert(ch); }
 void PaintArea::deleteTextChar() { textEdit.backspace(); }
 
-/// ========== Portapapeles ==========
 void PaintArea::copiarSeleccion() {
     QList<int> selected = selMgr.selectedObjectIndices();
     if (!selected.isEmpty()) {
@@ -1311,7 +1338,6 @@ void PaintArea::borrarSeleccion() {
     }
 }
 
-/// ========== Drag & Drop ==========
 void PaintArea::dragEnterEvent(QDragEnterEvent *event) {
     if (event->mimeData()->hasUrls() || event->mimeData()->hasImage()) event->acceptProposedAction();
 }
@@ -1351,7 +1377,6 @@ void PaintArea::dropEvent(QDropEvent *event) {
     }
 }
 
-/// ========== Lienzo ==========
 void PaintArea::cambiarDimensionesLienzo(int nuevoW, int nuevoH) {
     if (pixelOptions.getIsPixelArtMode()) { setPixelArtResolution(qMax(8, qMin(64, nuevoW))); return; }
     if (nuevoW < 50) nuevoW = 50; if (nuevoH < 50) nuevoH = 50;
@@ -1364,7 +1389,6 @@ void PaintArea::cambiarDimensionesLienzo(int nuevoW, int nuevoH) {
     update();
 }
 
-/// ========== Getters frames ==========
 const QList<QImage>& PaintArea::getFrames() const { return animManager.getFrames(); }
 int PaintArea::getCurrentFrameIndex() const { return animManager.getCurrentFrameIndex(); }
 bool PaintArea::getIsPixelArtMode() const { return pixelOptions.getIsPixelArtMode(); }
@@ -2144,7 +2168,7 @@ void PaintArea::updateSelectionPreview(const QRect &selPrevia, const QPoint &pun
     if (currentTool == ToolSelect || currentTool == ToolSelectFree ||
         currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
         repintarZonaCanvas(selPrevia.united(selMgr.rect()).adjusted(-6, -6, 6, 6));
-    } else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
+    } else if (isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
         invalidarTrazo(puntoPrevio, pos, QRect(startPoint, puntoPrevio).normalized());
     } else {
         invalidarTrazo(puntoPrevio, pos);
@@ -2393,7 +2417,7 @@ void PaintArea::finishShapeRelease(const QPoint &finalPoint, int scaledWidth) {
         return;
     }
 
-    if (ToolCategories::isShapeTool(currentTool)) {
+    if (isShapeTool(currentTool)) {
         selMgr.registerShapeObject(currentTool, startPoint, finalPoint,
                                    colorDeUso, colorDeUso, scaledWidth, stack.currentIndex());
         return;
@@ -2421,7 +2445,7 @@ bool PaintArea::handleReleaseDrawing(const QPoint &finalPoint, int scaledWidth) 
     }
     if (currentTool == ToolSelect || currentTool == ToolSelectFree) {
         finishSelectionRelease(finalPoint);
-    } else if (ToolCategories::isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
+    } else if (isShapeTool(currentTool) || currentTool == ToolPixelStroke) {
         finishShapeRelease(finalPoint, scaledWidth);
     }
 
@@ -2536,7 +2560,7 @@ void PaintArea::paintCanvasResizePreview(QPainter &painter) {
 
 void PaintArea::paintShapePreview(QPainter &painter, int scaledWidth) {
     if (!drawing) return;
-    if (!ToolCategories::isShapeTool(currentTool) && currentTool != ToolPixelStroke) return;
+    if (!isShapeTool(currentTool) && currentTool != ToolPixelStroke) return;
 
     QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
     if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
@@ -2617,6 +2641,14 @@ void PaintArea::paintTextFrame(QPainter &painter) {
 void PaintArea::paintGradientPreview(QPainter &painter) {
     if (!drawingGradient || currentTool != ToolGradient) return;
 
+    auto grad = buildGradientForPreview();
+    if (grad) {
+        paintGradientFill(painter, grad.get());
+    }
+    paintGradientHandleOverlay(painter);
+}
+
+std::unique_ptr<QGradient> PaintArea::buildGradientForPreview() const {
     QColor c1 = gradientReverse ? penColor2 : penColor1;
     QColor c2;
     if (gradientUseSecondColor) c2 = gradientReverse ? penColor1 : penColor2;
@@ -2624,49 +2656,58 @@ void PaintArea::paintGradientPreview(QPainter &painter) {
     c1.setAlpha(gradientOpacity);
     c2.setAlpha(gradientUseSecondColor ? gradientOpacity : 0);
 
-    QGradient *grad = nullptr;
+    std::unique_ptr<QGradient> grad;
     switch (gradientType) {
         case GradientLinear:
-            grad = new QLinearGradient(gradientStart, gradientEnd);
+            grad = std::make_unique<QLinearGradient>(gradientStart, gradientEnd);
             break;
         case GradientRadial: {
-            int radius = qMax(1, (int)sqrt(pow(gradientEnd.x() - gradientStart.x(), 2) +
-                                            pow(gradientEnd.y() - gradientStart.y(), 2)));
-            grad = new QRadialGradient(gradientStart, radius);
+            const int radius = qMax(1, (int)sqrt(pow(gradientEnd.x() - gradientStart.x(), 2) +
+                                                  pow(gradientEnd.y() - gradientStart.y(), 2)));
+            grad = std::make_unique<QRadialGradient>(gradientStart, radius);
             break;
         }
         case GradientConic:
-            grad = new QConicalGradient(gradientStart, gradientAngle);
+            grad = std::make_unique<QConicalGradient>(gradientStart, gradientAngle);
             break;
+        default:
+            return nullptr;
     }
-    if (grad) {
-        grad->setColorAt(0.0, c1);
-        grad->setColorAt(1.0, c2);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(*grad);
-        painter.setOpacity(0.85);
-        painter.drawRect(stack.canvasRect());
-        painter.setOpacity(1.0);
-        delete grad;
-    }
+    grad->setColorAt(0.0, c1);
+    grad->setColorAt(1.0, c2);
+    return grad;
+}
 
+void PaintArea::paintGradientFill(QPainter &painter, QGradient *grad) {
+    if (!grad) return;
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(*grad);
+    painter.setOpacity(0.85);
+    painter.drawRect(stack.canvasRect());
+    painter.setOpacity(1.0);
+}
+
+void PaintArea::paintGradientHandleOverlay(QPainter &painter) {
     painter.setPen(QPen(QColor(255, 80, 80), 2.0 / zoomFactor, Qt::DashLine));
     painter.setBrush(Qt::NoBrush);
     painter.drawLine(gradientStart, gradientEnd);
+
     painter.setBrush(QColor(255, 80, 80, 220));
     painter.drawEllipse(QPointF(gradientStart), 6.0 / zoomFactor, 6.0 / zoomFactor);
-    painter.drawEllipse(QPointF(gradientEnd), 6.0 / zoomFactor, 6.0 / zoomFactor);
+    painter.drawEllipse(QPointF(gradientEnd),   6.0 / zoomFactor, 6.0 / zoomFactor);
 
     painter.setPen(Qt::white);
     QFont infoFont;
     infoFont.setPixelSize(qMax(10, (int)(12 / zoomFactor)));
     painter.setFont(infoFont);
-    QString info = QString("%1 | %2° | %3% | %4")
+
+    const QString info = QString("%1 | %2° | %3% | %4")
         .arg(gradientType == GradientLinear ? "Lineal" :
              gradientType == GradientRadial ? "Radial" : "Cónico")
         .arg(gradientAngle)
         .arg(qRound(gradientOpacity / 255.0 * 100))
         .arg(gradientUseSecondColor ? "2col" : "→ Transp");
+
     painter.drawText(gradientStart.x() + 10 / zoomFactor,
                      gradientStart.y() - 10 / zoomFactor, info);
 }
@@ -2712,59 +2753,78 @@ void PaintArea::paintCursorSilhouette(QPainter &painter, int scaledWidth) {
     if (!rect().contains(hoverPos) || textEdit.active || vectorEditMode) return;
 
     if (stack.isEditingMask() && herramientaDePintura()) {
-        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 140) : QColor(0, 0, 0, 120),
-                            1, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        BrushSettings cfg;
-        if (usaStampDePincel()) cfg = activePreset();
-        else {
-            cfg.shape = ShapeType::Circle;
-            cfg.dragMode = DragMode::Continuous;
-            cfg.rotationMode = RotationMode::Fixed;
-            cfg.size = qMax(5, (int)(penWidth * mouseSensitivity * 2));
-        }
-        double sSize = qMax(4, cfg.size) * zoomFactor;
-        painter.save();
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        PaintEngine::drawBrushSilhouette(painter, cfg, sSize, hoverPos);
-        painter.restore();
+        paintMaskBrushSilhouette(painter);
         return;
     }
-
     if (currentTool == ToolBlur || currentTool == ToolHeal || currentTool == ToolShadowBurn) {
-        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 180) : QColor(0, 0, 0, 150), 1));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawEllipse(QPointF(hoverPos),
-            (double)((scaledWidth * 2 + 2) * zoomFactor),
-            (double)((scaledWidth * 2 + 2) * zoomFactor));
+        paintRetouchSilhouette(painter, scaledWidth);
         return;
     }
-
     if (currentTool == ToolDeform) {
-        m_deform.paintOverlay(painter, hoverPos, zoomFactor, darkModeActive);
+        paintDeformSilhouette(painter);
         return;
     }
-
     if (currentTool == ToolClone && cloneSourceSet) {
-        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 200) : QColor(0, 0, 0, 180), 1.5));
-        painter.setBrush(Qt::NoBrush);
-        int brushSize = (scaledWidth * 2) * zoomFactor;
-        painter.drawEllipse(QPointF(hoverPos), (double)brushSize, (double)brushSize);
-        painter.drawLine(hoverPos.x() - 4, hoverPos.y(), hoverPos.x() + 4, hoverPos.y());
-        painter.drawLine(hoverPos.x(), hoverPos.y() - 4, hoverPos.x(), hoverPos.y() + 4);
+        paintCloneSilhouette(painter, scaledWidth);
         return;
     }
-
     if (usaStampDePincel()) {
-        painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 120) : QColor(0, 0, 0, 100),
-                            1, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        double sSize = activePreset().size * zoomFactor;
-        painter.save();
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        PaintEngine::drawBrushSilhouette(painter, activePreset(), sSize, hoverPos);
-        painter.restore();
+        paintBrushStampSilhouette(painter);
     }
+}
+
+void PaintArea::paintMaskBrushSilhouette(QPainter &painter) {
+    painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 140) : QColor(0, 0, 0, 120),
+                        1, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+
+    BrushSettings cfg;
+    if (usaStampDePincel()) {
+        cfg = activePreset();
+    } else {
+        cfg.shape = ShapeType::Circle;
+        cfg.dragMode = DragMode::Continuous;
+        cfg.rotationMode = RotationMode::Fixed;
+        cfg.size = qMax(5, (int)(penWidth * mouseSensitivity * 2));
+    }
+    const double sSize = qMax(4, cfg.size) * zoomFactor;
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    PaintEngine::drawBrushSilhouette(painter, cfg, sSize, hoverPos);
+    painter.restore();
+}
+
+void PaintArea::paintRetouchSilhouette(QPainter &painter, int scaledWidth) {
+    painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 180) : QColor(0, 0, 0, 150), 1));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(QPointF(hoverPos),
+        (double)((scaledWidth * 2 + 2) * zoomFactor),
+        (double)((scaledWidth * 2 + 2) * zoomFactor));
+}
+
+void PaintArea::paintDeformSilhouette(QPainter &painter) {
+    m_deform.paintOverlay(painter, hoverPos, zoomFactor, darkModeActive);
+}
+
+void PaintArea::paintCloneSilhouette(QPainter &painter, int scaledWidth) {
+    painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 200) : QColor(0, 0, 0, 180), 1.5));
+    painter.setBrush(Qt::NoBrush);
+    const int brushSize = (scaledWidth * 2) * zoomFactor;
+    painter.drawEllipse(QPointF(hoverPos), (double)brushSize, (double)brushSize);
+    painter.drawLine(hoverPos.x() - 4, hoverPos.y(), hoverPos.x() + 4, hoverPos.y());
+    painter.drawLine(hoverPos.x(), hoverPos.y() - 4, hoverPos.x(), hoverPos.y() + 4);
+}
+
+void PaintArea::paintBrushStampSilhouette(QPainter &painter) {
+    painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 120) : QColor(0, 0, 0, 100),
+                        1, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    const double sSize = activePreset().size * zoomFactor;
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    PaintEngine::drawBrushSilhouette(painter, activePreset(), sSize, hoverPos);
+    painter.restore();
 }
 
 #include "moc_paintarea.cpp"
