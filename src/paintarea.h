@@ -67,6 +67,7 @@
 #include <QApplication>
 
 #include "tools/PixelArtTools.h"
+#include "tools/ToolCategories.h"
 #include "tools/PixelAnimationTools.h"
 #include "tools/LassoTools.h"
 #include "filter/ImageFilters.h"
@@ -83,23 +84,7 @@
 #include "tools/BezierPathTool.h"
 
 
-const ToolType ToolShadowBurn = static_cast<ToolType>(101);
-const ToolType ToolDeform     = static_cast<ToolType>(102);
-
 class mainwind;
-
-inline bool esHerramientaFigura(ToolType t) {
-    switch (t) {
-        case ToolLine: case ToolRectangle: case ToolEllipse: case ToolRoundRect:
-        case ToolTriangle: case ToolRightTriangle: case ToolDiamond:
-        case ToolPentagon: case ToolHexagon:
-        case ToolArrowRight: case ToolArrowLeft:
-        case ToolStar: case ToolHeart: case ToolCube:
-            return true;
-        default:
-            return false;
-    }
-}
 
 int leerOrientacionExif(const QString &filePath);
 QImage aplicaOrientacionExif(const QImage &img, int orientation);
@@ -136,7 +121,6 @@ private:
     LayerStack stack;
 
     void recomponerImagen() { stack.recompose(); }
-    void asegurarImagenCompleta() { stack.ensureComposited(); }
 
     QPoint startPoint, lastPoint, hoverPos;
     bool drawing = false;
@@ -204,7 +188,7 @@ private:
 
     // Historial de pasos hacia atras
     QList<QImage> undoStack, redoStack;
-    const int MAX_HISTORY = 30; //numero de pasos
+    const int MAX_HISTORY = 30;
 
     // gradiente
     enum GradientType { GradientLinear = 0, GradientRadial = 1, GradientConic = 2 };
@@ -234,7 +218,7 @@ private:
     QPoint moveLayerOffset;
     int moveLayerIdx = -1;
 
-    QFont lastUsedTextFont; //fuentes
+    QFont lastUsedTextFont;
 
     friend class mainwind;
 
@@ -260,13 +244,9 @@ private:
     const BrushSettings& activePreset() const;
     const QImage& activeStamp() const;
 
-    // --- Notificación estándar (recompose + emit + update) ---
+    // --- Notificación estándar ---
     void refreshAndNotify(bool recompose = true);
-
-    // --- Horneado de pendientes (selección, bezier, texto, objetos, vector) ---
     void bakeAllPending();
-
-    // --- Preparar edición: baker + guardar historial ---
     void beginEdit();
 
     void configureMaskEditController();
@@ -313,6 +293,110 @@ private:
         return darkModeActive ? TextEngine::Style::forDarkMode()
                               : TextEngine::Style::forLightMode();
     }
+
+    // ============================================================
+    // keyPressEvent helpers (Extract Method)
+    // ============================================================
+    bool handleMaskBezierKeys(QKeyEvent *event);
+    bool handleClipboardShortcuts(QKeyEvent *event);
+    bool handleDeleteKey(QKeyEvent *event);
+    bool handleObjectShortcuts(QKeyEvent *event);
+    bool handleVectorModeKeys(QKeyEvent *event);
+    bool handleTextEditingKeys(QKeyEvent *event);
+    bool handleBezierPenKeys(QKeyEvent *event);
+    bool handleToolSpecificKeys(QKeyEvent *event);
+
+    // ============================================================
+    // mousePressEvent helpers (Extract Method)
+    // ============================================================
+    bool handlePressMaskBezier(const QPoint &pos);
+    bool handlePressMaskPaint(const QPoint &pos);
+    bool handlePressVector(const QPoint &pos);
+    bool handlePressTextActive(const QPoint &pos);
+    bool handlePressCanvasHandles(const QPoint &rawPos);
+    bool handlePressSelectionGizmo(const QPoint &pos);
+    bool handlePressZoom(QMouseEvent *event, const QPoint &rawPos);
+    void handlePressInsideCanvas(QMouseEvent *event, const QPoint &pos, int scaledWidth);
+    bool handlePressCapaBloqueada();
+    bool handlePressPenBezier(const QPoint &pos);
+    bool handlePressSelectRect(const QPoint &pos);
+    bool handlePressSelectFree(const QPoint &pos);
+    void handlePressBucket(const QPoint &pos, const QColor &colorDeUso);
+    void handlePressPicker(const QPoint &pos);
+    void handlePressText(const QPoint &pos, const QColor &colorDeUso);
+    bool handlePressGradient(QMouseEvent *event, const QPoint &pos);
+    bool handlePressClone(QMouseEvent *event, const QPoint &pos);
+    void handlePressMove(QMouseEvent *event, const QPoint &pos);
+    void handlePressDeform(const QPoint &pos);
+    void handlePressGenericStroke(const QPoint &pos, int scaledWidth);
+
+    // ============================================================
+    // mouseMoveEvent helpers (Extract Method)
+    // ============================================================
+    bool handleMoveMaskBezier(const QPoint &pos);
+    bool handleMoveMaskPaint(const QPoint &pos);
+    bool handleMoveVector(const QPoint &pos);
+    bool handleMoveTextActive(const QPoint &pos);
+    bool handleMoveCanvasResize(const QPoint &rawPos);
+    bool handleMoveSelectionRotate(QMouseEvent *event, const QPoint &pos);
+    bool handleMoveSelectionResize(QMouseEvent *event, const QPoint &pos);
+    bool handleMoveSelectionDrag(const QPoint &pos);
+    bool handleMoveGradientPreview(const QPoint &pos);
+    bool handleMoveClone(const QPoint &pos, Qt::MouseButtons buttons);
+    bool handleMoveDeform(const QPoint &pos, Qt::MouseButtons buttons);
+    bool handleMoveTool(QMouseEvent *event, const QPoint &pos);
+    bool handleMoveSelectionHover(const QPoint &pos);
+    bool handleMoveDrawing(const QPoint &pos, int scaledWidth);
+    bool handleMoveTextHover(const QPoint &pos);
+    void handleMoveCursorUpdate(const QPoint &pos);
+
+    // --- sub-ayudas de handleMoveTool ---
+    bool handleMoveObjectManipulation(QMouseEvent *event, const QPoint &pos);
+    bool handleMoveMovingLayer(const QPoint &pos);
+    bool handleMoveToolHover(const QPoint &pos);
+
+    // --- sub-ayudas de handleMoveDrawing ---
+    void applyBrushStroke(const QPoint &pos, const QColor &colorDeUso, const QColor &colorOpuesto);
+    void applyPixelArtStroke(const QPoint &pos, const QColor &colorDeUso);
+    void applyPencilStroke(const QPoint &pos, const QColor &colorDeUso, int scaledWidth);
+    void applyEraserStroke(const QPoint &pos, int scaledWidth);
+    void applyRetouchStroke(const QPoint &pos);
+    void updateSelectionPreview(const QRect &selPrevia, const QPoint &puntoPrevio, const QPoint &pos);
+
+    // ============================================================
+    // mouseReleaseEvent helpers (Extract Method)
+    // ============================================================
+    bool handleReleaseMaskPaint();
+    bool handleReleaseVectorPoint();
+    bool handleReleaseTextDragResize();
+    bool handleReleaseCanvasResize();
+    bool handleReleaseSelectionGizmo();
+    bool handleReleaseGradient();
+    bool handleReleaseClone();
+    bool handleReleaseDeform();
+    bool handleReleaseMove();
+    bool handleReleaseDrawing(const QPoint &finalPoint, int scaledWidth);
+    void finishLassoRelease();
+    void finishSelectionRelease(const QPoint &finalPoint);
+    void finishShapeRelease(const QPoint &finalPoint, int scaledWidth);
+
+    // ============================================================
+    // paintEvent helpers (Extract Method)
+    // ============================================================
+    void paintCheckerboard(QPainter &painter, const QRect &canvasRect);
+    void paintMaskOverlay(QPainter &painter);
+    void paintBezierOverlay(QPainter &painter);
+    void paintCanvasResizePreview(QPainter &painter);
+    void paintShapePreview(QPainter &painter, int scaledWidth);
+    void paintActiveSelection(QPainter &painter);
+    void paintVectorEditOverlay(QPainter &painter);
+    void paintSelectionPreview(QPainter &painter);
+    void paintTextFrame(QPainter &painter);
+    void paintGradientPreview(QPainter &painter);
+    void paintCloneOverlay(QPainter &painter);
+    void paintSelectionGizmos(QPainter &painter);
+    void paintCanvasHandles(QPainter &painter);
+    void paintCursorSilhouette(QPainter &painter, int scaledWidth);
 
 public:
     explicit PaintArea(QWidget *parent = nullptr);
@@ -463,7 +547,7 @@ public:
     void insertTextChar(const QString &ch);
     void deleteTextChar();
 
-    void copiarSeleccion(); // Portapapeles
+    void copiarSeleccion();
     void cortarSeleccion();
     void pegarClipboard();
     void borrarSeleccion();
@@ -495,7 +579,6 @@ signals:
     void textFrameClicked(const QPoint &canvasPos);
     void textFrameCancelled();
     void vectorModeChanged(bool active);
-    void editTextObjectRequested(int objectIndex, const QString &text, const QFont &font, const QColor &color, const QRect &bounds);
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
@@ -506,4 +589,4 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 };
 
-#endif
+#endif // PAINTAREA_H
