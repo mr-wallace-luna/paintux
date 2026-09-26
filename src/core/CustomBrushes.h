@@ -93,6 +93,585 @@ struct BrushSettings {
 };
 
 // ============================================================
+// SHAPE PATH BUILDER — Reemplaza el switch gigante con tabla de funciones
+// ============================================================
+class ShapePathBuilder {
+public:
+    struct Context {
+        QRectF r{-50.0, -50.0, 100.0, 100.0};
+        double cx = 0.0;
+        double cy = 0.0;
+        double w  = 100.0;
+        double h  = 100.0;
+
+        Context() {
+            cx = r.center().x();
+            cy = r.center().y();
+            w  = r.width();
+            h  = r.height();
+        }
+    };
+
+    // ------------------------------------------------------------
+    // Helpers geométricos reutilizables
+    // ------------------------------------------------------------
+    static void appendRegularPolygon(QPainterPath &path, const Context &ctx,
+                                     int sides, double startAngle, double radiusFactor) {
+        for (int i = 0; i < sides; ++i) {
+            const double a = startAngle + i * 2.0 * M_PI / sides;
+            const double px = ctx.cx + (ctx.w / 2.0) * radiusFactor * cos(a);
+            const double py = ctx.cy + (ctx.h / 2.0) * radiusFactor * sin(a);
+            if (i == 0) path.moveTo(px, py);
+            else        path.lineTo(px, py);
+        }
+        path.closeSubpath();
+    }
+
+    static void appendStarPolygon(QPainterPath &path, const Context &ctx,
+                                  int points, double innerFactor, double startAngle) {
+        const int total = points * 2;
+        for (int i = 0; i < total; ++i) {
+            const double a = startAngle + i * M_PI / points;
+            const double f = (i % 2 == 0) ? 1.0 : innerFactor;
+            const double px = ctx.cx + (ctx.w / 2.0) * f * cos(a);
+            const double py = ctx.cy + (ctx.h / 2.0) * f * sin(a);
+            if (i == 0) path.moveTo(px, py);
+            else        path.lineTo(px, py);
+        }
+        path.closeSubpath();
+    }
+
+    // ------------------------------------------------------------
+    // Builders individuales
+    // ------------------------------------------------------------
+    static void buildCircle(QPainterPath &p, const Context &c)          { p.addEllipse(c.r); }
+    static void buildSquare(QPainterPath &p, const Context &c)          { p.addRect(c.r); }
+    static void buildRoundedSquare(QPainterPath &p, const Context &c)   { p.addRoundedRect(c.r, c.w * 0.2, c.h * 0.2); }
+
+    static void buildDiamond(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx, c.r.top());
+        p.lineTo(c.r.right(), c.cy);
+        p.lineTo(c.cx, c.r.bottom());
+        p.lineTo(c.r.left(), c.cy);
+        p.closeSubpath();
+    }
+
+    static void buildTriangle(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx, c.r.top());
+        p.lineTo(c.r.left(), c.r.bottom());
+        p.lineTo(c.r.right(), c.r.bottom());
+        p.closeSubpath();
+    }
+
+    static void buildRightTriangle(QPainterPath &p, const Context &c) {
+        p.moveTo(c.r.topLeft());
+        p.lineTo(c.r.bottomLeft());
+        p.lineTo(c.r.bottomRight());
+        p.closeSubpath();
+    }
+
+    static void buildPentagon(QPainterPath &p, const Context &c) { appendRegularPolygon(p, c, 5, -M_PI / 2.0, 1.0); }
+    static void buildHexagon(QPainterPath &p, const Context &c)  { appendRegularPolygon(p, c, 6, -M_PI / 2.0, 1.0); }
+    static void buildStar4(QPainterPath &p, const Context &c)    { appendStarPolygon(p, c, 4, 0.35, -M_PI / 2.0); }
+    static void buildStar5(QPainterPath &p, const Context &c)    { appendStarPolygon(p, c, 5, 0.45, -M_PI / 2.0); }
+    static void buildStar6(QPainterPath &p, const Context &c)    { appendStarPolygon(p, c, 6, 0.5,  -M_PI / 2.0); }
+
+    static void buildCross(QPainterPath &p, const Context &c) {
+        const double t = c.w * 0.3;
+        p.moveTo(c.cx - t / 2, c.r.top());
+        p.lineTo(c.cx + t / 2, c.r.top());
+        p.lineTo(c.cx + t / 2, c.cy - t / 2);
+        p.lineTo(c.r.right(), c.cy - t / 2);
+        p.lineTo(c.r.right(), c.cy + t / 2);
+        p.lineTo(c.cx + t / 2, c.cy + t / 2);
+        p.lineTo(c.cx + t / 2, c.r.bottom());
+        p.lineTo(c.cx - t / 2, c.r.bottom());
+        p.lineTo(c.cx - t / 2, c.cy + t / 2);
+        p.lineTo(c.r.left(), c.cy + t / 2);
+        p.lineTo(c.r.left(), c.cy - t / 2);
+        p.lineTo(c.cx - t / 2, c.cy - t / 2);
+        p.closeSubpath();
+    }
+
+    static void buildPlus(QPainterPath &p, const Context &c) {
+        const double t = c.w * 0.35;
+        p.addRect(c.cx - t / 2, c.r.top(), t, c.h);
+        p.addRect(c.r.left(), c.cy - t / 2, c.w, t);
+    }
+
+    static void buildX(QPainterPath &p, const Context &c) {
+        const double t = c.w * 0.25;
+        QPolygonF poly;
+        poly << QPointF(c.r.left() + t, c.r.top())
+             << QPointF(c.cx, c.cy - t)
+             << QPointF(c.r.right() - t, c.r.top())
+             << QPointF(c.r.right(), c.r.top() + t)
+             << QPointF(c.cx + t, c.cy)
+             << QPointF(c.r.right(), c.r.bottom() - t)
+             << QPointF(c.r.right() - t, c.r.bottom())
+             << QPointF(c.cx, c.cy + t)
+             << QPointF(c.r.left() + t, c.r.bottom())
+             << QPointF(c.r.left(), c.r.bottom() - t)
+             << QPointF(c.cx - t, c.cy)
+             << QPointF(c.r.left(), c.r.top() + t);
+        p.addPolygon(poly);
+        p.closeSubpath();
+    }
+
+    static void buildArrow(QPainterPath &p, const Context &c) {
+        const double bodyH = c.h * 0.4;
+        const double headW = c.w * 0.45;
+        p.moveTo(c.r.left(), c.cy - bodyH / 2);
+        p.lineTo(c.r.right() - headW, c.cy - bodyH / 2);
+        p.lineTo(c.r.right() - headW, c.r.top());
+        p.lineTo(c.r.right(), c.cy);
+        p.lineTo(c.r.right() - headW, c.r.bottom());
+        p.lineTo(c.r.right() - headW, c.cy + bodyH / 2);
+        p.lineTo(c.r.left(), c.cy + bodyH / 2);
+        p.closeSubpath();
+    }
+
+    static void buildHeart(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx, c.r.top() + c.h * 0.3);
+        p.cubicTo(c.r.left() + c.w * 0.1, c.r.top() - c.h * 0.05,
+                  c.r.left(), c.r.top() + c.h * 0.55,
+                  c.cx, c.r.bottom());
+        p.cubicTo(c.r.right(), c.r.top() + c.h * 0.55,
+                  c.r.right() - c.w * 0.1, c.r.top() - c.h * 0.05,
+                  c.cx, c.r.top() + c.h * 0.3);
+    }
+
+    static void buildLine(QPainterPath &p, const Context &c) {
+        const double t = qMax(1.0, c.h * 0.15);
+        p.addRect(c.r.left(), c.cy - t / 2, c.w, t);
+    }
+
+    static void buildPencilTip(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx, c.r.top());
+        p.lineTo(c.r.left() + c.w * 0.25, c.r.bottom());
+        p.lineTo(c.r.right() - c.w * 0.25, c.r.bottom());
+        p.closeSubpath();
+    }
+
+    static void buildFlatTip(QPainterPath &p, const Context &c) {
+        const double fh = c.h * 0.45;
+        p.addRoundedRect(c.r.left(), c.cy - fh / 2, c.w, fh, fh * 0.3, fh * 0.3);
+    }
+
+    static void buildChiselTip(QPainterPath &p, const Context &c) {
+        p.moveTo(c.r.left() + c.w * 0.15, c.r.top());
+        p.lineTo(c.r.right() - c.w * 0.15, c.r.top());
+        p.lineTo(c.r.right(), c.r.bottom());
+        p.lineTo(c.r.left(), c.r.bottom());
+        p.closeSubpath();
+    }
+
+    static void buildLeaf(QPainterPath &p, const Context &c) {
+        p.moveTo(c.r.left(), c.r.bottom());
+        p.cubicTo(c.r.left(), c.r.top() + c.h * 0.2, c.cx, c.r.top(), c.r.right(), c.r.top());
+        p.cubicTo(c.r.right(), c.r.top() + c.h * 0.6, c.cx + c.w * 0.2, c.r.bottom(), c.r.left(), c.r.bottom());
+        p.closeSubpath();
+    }
+
+    static void buildDrop(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx, c.r.top());
+        p.cubicTo(c.cx + c.w * 0.4, c.r.top() + c.h * 0.4, c.r.right(), c.cy + c.h * 0.15, c.cx, c.r.bottom());
+        p.cubicTo(c.r.left(), c.cy + c.h * 0.15, c.cx - c.w * 0.4, c.r.top() + c.h * 0.4, c.cx, c.r.top());
+        p.closeSubpath();
+    }
+
+    static void buildCrescent(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx + c.w * 0.15, c.r.top());
+        p.arcTo(c.r, 270, 180);
+        p.cubicTo(c.cx - c.w * 0.05, c.r.top() + c.h * 0.75,
+                  c.cx - c.w * 0.05, c.r.top() + c.h * 0.25,
+                  c.cx + c.w * 0.15, c.r.top());
+        p.closeSubpath();
+    }
+
+    static void buildRing(QPainterPath &p, const Context &c) {
+        p.addEllipse(c.r);
+        const double inset = c.w * 0.2;
+        p.addEllipse(c.r.adjusted(inset, inset, -inset, -inset));
+    }
+
+    static void buildHalfCircle(QPainterPath &p, const Context &c) {
+        p.moveTo(c.r.left(), c.cy);
+        p.arcTo(c.r, 180, 180);
+        p.closeSubpath();
+    }
+
+    static void buildSparkle(QPainterPath &p, const Context &c) {
+        const double inner = 0.2;
+        p.moveTo(c.cx, c.r.top());
+        p.quadTo(c.cx + c.w * inner, c.cy - c.h * inner, c.r.right(), c.cy);
+        p.quadTo(c.cx + c.w * inner, c.cy + c.h * inner, c.cx, c.r.bottom());
+        p.quadTo(c.cx - c.w * inner, c.cy + c.h * inner, c.r.left(), c.cy);
+        p.quadTo(c.cx - c.w * inner, c.cy - c.h * inner, c.cx, c.r.top());
+        p.closeSubpath();
+    }
+
+    static void buildClover(QPainterPath &p, const Context &c) {
+        const double lr = c.w * 0.22;
+        p.addEllipse(c.cx - lr, c.cy - lr * 2, lr * 2, lr * 2);
+        p.addEllipse(c.cx - lr * 2, c.cy - lr, lr * 2, lr * 2);
+        p.addEllipse(c.cx, c.cy - lr, lr * 2, lr * 2);
+        p.addEllipse(c.cx - lr, c.cy, lr * 2, lr * 2);
+    }
+
+    static void buildGear(QPainterPath &p, const Context &c) {
+        const int teeth = 8;
+        const double outerR = c.w / 2.0;
+        const double innerR = c.w / 3.0;
+        for (int i = 0; i < teeth * 2; ++i) {
+            const double a = i * M_PI / teeth;
+            const double rad = (i % 2 == 0) ? outerR : innerR;
+            const double px = c.cx + rad * cos(a);
+            const double py = c.cy + rad * sin(a);
+            if (i == 0) p.moveTo(px, py);
+            else        p.lineTo(px, py);
+        }
+        p.closeSubpath();
+        const double holeR = c.w * 0.12;
+        p.addEllipse(c.cx - holeR, c.cy - holeR, holeR * 2, holeR * 2);
+    }
+
+    static void buildLightning(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx + c.w * 0.08, c.r.top());
+        p.lineTo(c.cx - c.w * 0.28, c.cy + c.h * 0.05);
+        p.lineTo(c.cx - c.w * 0.02, c.cy + c.h * 0.05);
+        p.lineTo(c.cx - c.w * 0.12, c.r.bottom());
+        p.lineTo(c.cx + c.w * 0.28, c.cy - c.h * 0.05);
+        p.lineTo(c.cx + c.w * 0.02, c.cy - c.h * 0.05);
+        p.lineTo(c.cx + c.w * 0.18, c.r.top());
+        p.closeSubpath();
+    }
+
+    static void buildMusicNote(QPainterPath &p, const Context &c) {
+        const double headR = c.w * 0.13;
+        p.addEllipse(QPointF(c.cx - c.w * 0.10, c.cy + c.h * 0.28), headR, headR * 0.8);
+        p.addRect(QRectF(c.cx + c.w * 0.02, c.r.top() + c.h * 0.05, c.w * 0.05, c.h * 0.45));
+        p.moveTo(c.cx + c.w * 0.07, c.r.top() + c.h * 0.05);
+        p.cubicTo(c.cx + c.w * 0.32, c.r.top() + c.h * 0.15,
+                  c.cx + c.w * 0.32, c.r.top() + c.h * 0.35,
+                  c.cx + c.w * 0.10, c.r.top() + c.h * 0.35);
+        p.lineTo(c.cx + c.w * 0.07, c.r.top() + c.h * 0.28);
+        p.cubicTo(c.cx + c.w * 0.20, c.r.top() + c.h * 0.28,
+                  c.cx + c.w * 0.20, c.r.top() + c.h * 0.18,
+                  c.cx + c.w * 0.07, c.r.top() + c.h * 0.18);
+        p.closeSubpath();
+    }
+
+    static void buildFlower(QPainterPath &p, const Context &c) {
+        const int petals = 5;
+        const double petalR = c.w * 0.20;
+        for (int i = 0; i < petals; ++i) {
+            const double a = -M_PI / 2.0 + i * 2.0 * M_PI / petals;
+            const double px = c.cx + c.w * 0.20 * cos(a);
+            const double py = c.cy + c.h * 0.20 * sin(a);
+            p.addEllipse(QPointF(px, py), petalR, petalR);
+        }
+        p.addEllipse(QPointF(c.cx, c.cy), c.w * 0.10, c.h * 0.10);
+    }
+
+    static void buildButterfly(QPainterPath &p, const Context &c) {
+        p.addEllipse(QPointF(c.cx, c.cy), c.w * 0.04, c.h * 0.30);
+        p.moveTo(c.cx - c.w * 0.04, c.cy - c.h * 0.05);
+        p.cubicTo(c.cx - c.w * 0.45, c.cy - c.h * 0.45,
+                  c.cx - c.w * 0.50, c.cy + c.h * 0.10,
+                  c.cx - c.w * 0.04, c.cy + c.h * 0.10);
+        p.closeSubpath();
+        p.moveTo(c.cx - c.w * 0.04, c.cy + c.h * 0.05);
+        p.cubicTo(c.cx - c.w * 0.40, c.cy + c.h * 0.25,
+                  c.cx - c.w * 0.35, c.cy + c.h * 0.50,
+                  c.cx - c.w * 0.04, c.cy + c.h * 0.30);
+        p.closeSubpath();
+        p.moveTo(c.cx + c.w * 0.04, c.cy - c.h * 0.05);
+        p.cubicTo(c.cx + c.w * 0.45, c.cy - c.h * 0.45,
+                  c.cx + c.w * 0.50, c.cy + c.h * 0.10,
+                  c.cx + c.w * 0.04, c.cy + c.h * 0.10);
+        p.closeSubpath();
+        p.moveTo(c.cx + c.w * 0.04, c.cy + c.h * 0.05);
+        p.cubicTo(c.cx + c.w * 0.40, c.cy + c.h * 0.25,
+                  c.cx + c.w * 0.35, c.cy + c.h * 0.50,
+                  c.cx + c.w * 0.04, c.cy + c.h * 0.30);
+        p.closeSubpath();
+    }
+
+    static void buildCloud(QPainterPath &p, const Context &c) {
+        p.addEllipse(QPointF(c.cx - c.w * 0.20, c.cy + c.h * 0.05), c.w * 0.20, c.h * 0.20);
+        p.addEllipse(QPointF(c.cx + c.w * 0.20, c.cy + c.h * 0.05), c.w * 0.22, c.h * 0.22);
+        p.addEllipse(QPointF(c.cx - c.w * 0.05, c.cy - c.h * 0.10), c.w * 0.25, c.h * 0.25);
+        p.addEllipse(QPointF(c.cx + c.w * 0.15, c.cy - c.h * 0.05), c.w * 0.20, c.h * 0.20);
+        p.addEllipse(QPointF(c.cx, c.cy + c.h * 0.15), c.w * 0.30, c.h * 0.15);
+    }
+
+    static void buildSpeech(QPainterPath &p, const Context &c) {
+        const double rad = c.w * 0.10;
+        p.addRoundedRect(QRectF(c.r.left(), c.r.top(), c.w, c.h * 0.75), rad, rad);
+        p.moveTo(c.cx - c.w * 0.15, c.r.top() + c.h * 0.75);
+        p.lineTo(c.cx - c.w * 0.20, c.r.bottom());
+        p.lineTo(c.cx + c.w * 0.05, c.r.top() + c.h * 0.75);
+        p.closeSubpath();
+    }
+
+    static void buildLocationPin(QPainterPath &p, const Context &c) {
+        p.moveTo(c.cx, c.r.bottom());
+        p.cubicTo(c.cx - c.w * 0.4, c.cy + c.h * 0.1, c.r.left(), c.r.top(), c.cx, c.r.top());
+        p.cubicTo(c.r.right(), c.r.top(), c.cx + c.w * 0.4, c.cy + c.h * 0.1, c.cx, c.r.bottom());
+        p.closeSubpath();
+        const double holeR = c.w * 0.12;
+        p.addEllipse(QPointF(c.cx, c.cy - c.h * 0.05), holeR, holeR);
+    }
+
+    static void buildWave(QPainterPath &p, const Context &c) {
+        p.moveTo(c.r.left(), c.cy);
+        p.cubicTo(c.r.left() + c.w * 0.15, c.r.top(), c.r.left() + c.w * 0.35, c.r.top(), c.cx, c.cy);
+        p.cubicTo(c.cx + c.w * 0.15, c.r.bottom(), c.cx + c.w * 0.35, c.r.bottom(), c.r.right(), c.cy);
+        p.cubicTo(c.cx + c.w * 0.35, c.cy + c.h * 0.35, c.cx + c.w * 0.15, c.cy + c.h * 0.35, c.cx, c.cy + c.h * 0.02);
+        p.cubicTo(c.r.left() + c.w * 0.35, c.cy - c.h * 0.02, c.r.left() + c.w * 0.15, c.cy - c.h * 0.02, c.r.left(), c.cy);
+        p.closeSubpath();
+    }
+
+    static void buildSpiral(QPainterPath &p, const Context &c) {
+        const int steps = 80;
+        const double turns = 3.0;
+        const double maxR = c.w * 0.45;
+        for (int i = 0; i <= steps; ++i) {
+            const double t = (double)i / steps;
+            const double a = t * turns * 2.0 * M_PI;
+            const double rad = t * maxR;
+            const double px = c.cx + rad * cos(a);
+            const double py = c.cy + rad * sin(a);
+            if (i == 0) p.moveTo(px, py);
+            else        p.lineTo(px, py);
+        }
+    }
+
+    static void buildStarMany(QPainterPath &p, const Context &c) {
+        const int points = 16;
+        const double outerR = c.w * 0.5;
+        const double innerR = c.w * 0.20;
+        for (int i = 0; i < points * 2; ++i) {
+            const double a = -M_PI / 2.0 + i * M_PI / points;
+            const double rad = (i % 2 == 0) ? outerR : innerR;
+            const double px = c.cx + rad * cos(a);
+            const double py = c.cy + rad * sin(a);
+            if (i == 0) p.moveTo(px, py);
+            else        p.lineTo(px, py);
+        }
+        p.closeSubpath();
+    }
+
+    static void buildInfinity(QPainterPath &p, const Context &c) {
+        const double rW = c.w * 0.28;
+        const double rH = c.h * 0.28;
+        const double off = c.w * 0.22;
+        QPainterPath left, right;
+        left.addEllipse(QPointF(c.cx - off, c.cy), rW, rH);
+        right.addEllipse(QPointF(c.cx + off, c.cy), rW, rH);
+        p = left.united(right);
+        QPainterPath innerL, innerR;
+        innerL.addEllipse(QPointF(c.cx - off, c.cy), rW * 0.55, rH * 0.55);
+        innerR.addEllipse(QPointF(c.cx + off, c.cy), rW * 0.55, rH * 0.55);
+        p = p.subtracted(innerL.united(innerR));
+        QPainterPath center;
+        center.addEllipse(QPointF(c.cx, c.cy), rW * 0.18, rH * 0.18);
+        p = p.united(center);
+    }
+
+    static void buildDiamondStar(QPainterPath &p, const Context &c) {
+        const double outerX = c.w * 0.5;
+        const double outerY = c.h * 0.5;
+        const double innerX = c.w * 0.15;
+        const double innerY = c.h * 0.15;
+        p.moveTo(c.cx, c.cy - outerY);
+        p.lineTo(c.cx + innerX, c.cy - innerY);
+        p.lineTo(c.cx + outerX, c.cy);
+        p.lineTo(c.cx + innerX, c.cy + innerY);
+        p.lineTo(c.cx, c.cy + outerY);
+        p.lineTo(c.cx - innerX, c.cy + innerY);
+        p.lineTo(c.cx - outerX, c.cy);
+        p.lineTo(c.cx - innerX, c.cy - innerY);
+        p.closeSubpath();
+    }
+
+    // ------------------------------------------------------------
+    // TABLA DE DISPATCH — Replace Conditional with Polymorphism
+    // ------------------------------------------------------------
+    using BuilderFn = void(*)(QPainterPath&, const Context&);
+
+    static BuilderFn builderFor(ShapeType s) {
+        static const QHash<int, BuilderFn> table = {
+            {(int)ShapeType::Circle,        &buildCircle},
+            {(int)ShapeType::Square,        &buildSquare},
+            {(int)ShapeType::RoundedSquare, &buildRoundedSquare},
+            {(int)ShapeType::Diamond,       &buildDiamond},
+            {(int)ShapeType::Triangle,      &buildTriangle},
+            {(int)ShapeType::RightTriangle, &buildRightTriangle},
+            {(int)ShapeType::Pentagon,      &buildPentagon},
+            {(int)ShapeType::Hexagon,       &buildHexagon},
+            {(int)ShapeType::Star4,         &buildStar4},
+            {(int)ShapeType::Star5,         &buildStar5},
+            {(int)ShapeType::Star6,         &buildStar6},
+            {(int)ShapeType::Cross,         &buildCross},
+            {(int)ShapeType::Plus,          &buildPlus},
+            {(int)ShapeType::X,             &buildX},
+            {(int)ShapeType::Arrow,         &buildArrow},
+            {(int)ShapeType::Heart,         &buildHeart},
+            {(int)ShapeType::Line,          &buildLine},
+            {(int)ShapeType::PencilTip,     &buildPencilTip},
+            {(int)ShapeType::FlatTip,       &buildFlatTip},
+            {(int)ShapeType::ChiselTip,     &buildChiselTip},
+            {(int)ShapeType::Leaf,          &buildLeaf},
+            {(int)ShapeType::Drop,          &buildDrop},
+            {(int)ShapeType::Crescent,      &buildCrescent},
+            {(int)ShapeType::Ring,          &buildRing},
+            {(int)ShapeType::HalfCircle,    &buildHalfCircle},
+            {(int)ShapeType::Sparkle,       &buildSparkle},
+            {(int)ShapeType::Clover,        &buildClover},
+            {(int)ShapeType::Gear,          &buildGear},
+            {(int)ShapeType::Lightning,     &buildLightning},
+            {(int)ShapeType::MusicNote,     &buildMusicNote},
+            {(int)ShapeType::Flower,        &buildFlower},
+            {(int)ShapeType::Butterfly,     &buildButterfly},
+            {(int)ShapeType::Cloud,         &buildCloud},
+            {(int)ShapeType::Speech,        &buildSpeech},
+            {(int)ShapeType::LocationPin,   &buildLocationPin},
+            {(int)ShapeType::Wave,          &buildWave},
+            {(int)ShapeType::Spiral,        &buildSpiral},
+            {(int)ShapeType::StarMany,      &buildStarMany},
+            {(int)ShapeType::Infinity,      &buildInfinity},
+            {(int)ShapeType::DiamondStar,   &buildDiamondStar},
+        };
+        auto it = table.constFind((int)s);
+        return (it != table.constEnd()) ? it.value() : nullptr;
+    }
+
+    static QPainterPath build(ShapeType shape) {
+        QPainterPath path;
+        BuilderFn fn = builderFor(shape);
+        if (!fn) return path;
+        Context ctx;
+        fn(path, ctx);
+        return path;
+    }
+};
+
+// ============================================================
+// GEOMETRY DRAWER — DrawGeometry refactorizado por figura
+// ============================================================
+class GeometryDrawer {
+public:
+    static void draw(QPainter &painter, const QPoint &p1, const QPoint &p2, ToolType tool) {
+        const QRect r = QRect(p1, p2).normalized();
+        switch (tool) {
+        case ToolLine:          painter.drawLine(p1, p2); break;
+        case ToolRectangle:     painter.drawRect(r); break;
+        case ToolEllipse:       painter.drawEllipse(r); break;
+        case ToolRoundRect:     painter.drawRoundedRect(r, 12, 12); break;
+        case ToolTriangle:      drawTriangle(painter, p1, p2); break;
+        case ToolRightTriangle: drawRightTriangle(painter, p1, p2); break;
+        case ToolDiamond:       drawDiamond(painter, p1, p2); break;
+        case ToolPentagon:      drawRegularPolygon(painter, r, 5); break;
+        case ToolHexagon:       drawRegularPolygon(painter, r, 6); break;
+        case ToolStar:          drawStar(painter, r); break;
+        case ToolArrowRight:    drawArrow(painter, r, true); break;
+        case ToolArrowLeft:     drawArrow(painter, r, false); break;
+        case ToolHeart:         drawHeart(painter, r); break;
+        case ToolCube:          drawCube(painter, r); break;
+        default: break;
+        }
+    }
+
+private:
+    static void drawTriangle(QPainter &painter, const QPoint &p1, const QPoint &p2) {
+        QPolygon t;
+        t << QPoint((p1.x() + p2.x()) / 2, p1.y())
+          << QPoint(p1.x(), p2.y())
+          << QPoint(p2.x(), p2.y());
+        painter.drawPolygon(t);
+    }
+
+    static void drawRightTriangle(QPainter &painter, const QPoint &p1, const QPoint &p2) {
+        QPolygon t;
+        t << p1 << QPoint(p1.x(), p2.y()) << p2;
+        painter.drawPolygon(t);
+    }
+
+    static void drawDiamond(QPainter &painter, const QPoint &p1, const QPoint &p2) {
+        QPolygon t;
+        t << QPoint((p1.x() + p2.x()) / 2, p1.y())
+          << QPoint(p2.x(), (p1.y() + p2.y()) / 2)
+          << QPoint((p1.x() + p2.x()) / 2, p2.y())
+          << QPoint(p1.x(), (p1.y() + p2.y()) / 2);
+        painter.drawPolygon(t);
+    }
+
+    static void drawRegularPolygon(QPainter &painter, const QRect &r, int sides) {
+        QPolygon poly;
+        for (int i = 0; i < sides; ++i) {
+            const double angle = -M_PI / 2 + i * 2 * M_PI / sides;
+            poly << QPoint(r.center().x() + r.width() / 2 * cos(angle),
+                           r.center().y() + r.height() / 2 * sin(angle));
+        }
+        painter.drawPolygon(poly);
+    }
+
+    static void drawStar(QPainter &painter, const QRect &r) {
+        QPolygon poly;
+        const int points = 5;
+        for (int i = 0; i < points * 2; ++i) {
+            const double angle = -M_PI / 2 + i * M_PI / points;
+            const double f = (i % 2 == 1) ? 0.45 : 1.0;
+            poly << QPoint(r.center().x() + r.width() / 2 * f * cos(angle),
+                           r.center().y() + r.height() / 2 * f * sin(angle));
+        }
+        painter.drawPolygon(poly);
+    }
+
+    static void drawArrow(QPainter &painter, const QRect &r, bool right) {
+        const int ym = r.top() + r.height() / 2;
+        const int xb = right ? r.left() + r.width() * 0.55 : r.left() + r.width() * 0.45;
+        const int tk = r.height() * 0.25;
+        QPolygon poly;
+        poly << QPoint(right ? r.left() : r.right(), ym - tk)
+             << QPoint(xb, ym - tk)
+             << QPoint(xb, r.top())
+             << QPoint(right ? r.right() : r.left(), ym)
+             << QPoint(xb, r.bottom())
+             << QPoint(xb, ym + tk)
+             << QPoint(right ? r.left() : r.right(), ym + tk);
+        painter.drawPolygon(poly);
+    }
+
+    static void drawHeart(QPainter &painter, const QRect &r) {
+        QPainterPath path;
+        path.moveTo(r.left() + r.width() / 2, r.top() + r.height() * 0.28);
+        path.cubicTo(r.left() + r.width() * 0.1, r.top() - r.height() * 0.05,
+                     r.left(), r.top() + r.height() * 0.6,
+                     r.left() + r.width() / 2, r.bottom());
+        path.cubicTo(r.right(), r.top() + r.height() * 0.6,
+                     r.right() - r.width() * 0.1, r.top() - r.height() * 0.05,
+                     r.left() + r.width() / 2, r.top() + r.height() * 0.28);
+        painter.drawPath(path);
+    }
+
+    static void drawCube(QPainter &painter, const QRect &r) {
+        int offset = qMin(r.width(), r.height()) * 0.3;
+        if (offset < 4) offset = 4;
+        const QRect front(r.left(), r.top() + offset, r.width() - offset, r.height() - offset);
+        const QRect back(r.left() + offset, r.top(), r.width() - offset, r.height() - offset);
+        painter.drawRect(front);
+        painter.drawRect(back);
+        painter.drawLine(front.topLeft(), back.topLeft());
+        painter.drawLine(front.topRight(), back.topRight());
+        painter.drawLine(front.bottomLeft(), back.bottomLeft());
+        painter.drawLine(front.bottomRight(), back.bottomRight());
+    }
+};
+
+// ============================================================
 // MOTOR DE DIBUJO
 // ============================================================
 class PaintEngine {
@@ -164,522 +743,20 @@ public:
         };
     }
 
-    // ============================================================
-    // CONTEXTO PARA CONSTRUCCIÓN DE FIGURAS
-    // ============================================================
-    struct ShapeContext {
-        QRectF r{-50.0, -50.0, 100.0, 100.0};
-        double cx = 0.0;
-        double cy = 0.0;
-        double w  = 100.0;
-        double h  = 100.0;
-
-        ShapeContext() {
-            cx = r.center().x();
-            cy = r.center().y();
-            w  = r.width();
-            h  = r.height();
-        }
-    };
-
-    // ============================================================
-    // HELPERS PARA TRIÁNGULOS Y POLÍGONOS REGULARES
-    // ============================================================
-    static void appendRegularPolygon(QPainterPath &path, const ShapeContext &ctx,
-                                     int sides, double startAngle, double radiusFactor) {
-        for (int i = 0; i < sides; ++i) {
-            double a = startAngle + i * 2.0 * M_PI / sides;
-            double px = ctx.cx + (ctx.w / 2.0) * radiusFactor * cos(a);
-            double py = ctx.cy + (ctx.h / 2.0) * radiusFactor * sin(a);
-            if (i == 0) path.moveTo(px, py);
-            else        path.lineTo(px, py);
-        }
-        path.closeSubpath();
-    }
-
-    static void appendStarPolygon(QPainterPath &path, const ShapeContext &ctx,
-                                  int points, double innerFactor, double startAngle) {
-        int total = points * 2;
-        for (int i = 0; i < total; ++i) {
-            double a = startAngle + i * M_PI / points;
-            double f = (i % 2 == 0) ? 1.0 : innerFactor;
-            double px = ctx.cx + (ctx.w / 2.0) * f * cos(a);
-            double py = ctx.cy + (ctx.h / 2.0) * f * sin(a);
-            if (i == 0) path.moveTo(px, py);
-            else        path.lineTo(px, py);
-        }
-        path.closeSubpath();
-    }
-
-    static void appendPolygonFromPoints(QPainterPath &path, const QPolygonF &poly) {
-        path.addPolygon(poly);
-        path.closeSubpath();
-    }
-
-    // ============================================================
-    // BUILDERS POR FIGURA (Extract Method)
-    // ============================================================
-    static void buildCircle(QPainterPath &path, const ShapeContext &ctx) {
-        path.addEllipse(ctx.r);
-    }
-
-    static void buildSquare(QPainterPath &path, const ShapeContext &ctx) {
-        path.addRect(ctx.r);
-    }
-
-    static void buildRoundedSquare(QPainterPath &path, const ShapeContext &ctx) {
-        path.addRoundedRect(ctx.r, ctx.w * 0.2, ctx.h * 0.2);
-    }
-
-    static void buildDiamond(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx, ctx.r.top());
-        path.lineTo(ctx.r.right(), ctx.cy);
-        path.lineTo(ctx.cx, ctx.r.bottom());
-        path.lineTo(ctx.r.left(), ctx.cy);
-        path.closeSubpath();
-    }
-
-    static void buildTriangle(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx, ctx.r.top());
-        path.lineTo(ctx.r.left(), ctx.r.bottom());
-        path.lineTo(ctx.r.right(), ctx.r.bottom());
-        path.closeSubpath();
-    }
-
-    static void buildRightTriangle(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.r.topLeft());
-        path.lineTo(ctx.r.bottomLeft());
-        path.lineTo(ctx.r.bottomRight());
-        path.closeSubpath();
-    }
-
-    static void buildPentagon(QPainterPath &path, const ShapeContext &ctx) {
-        appendRegularPolygon(path, ctx, 5, -M_PI / 2.0, 1.0);
-    }
-
-    static void buildHexagon(QPainterPath &path, const ShapeContext &ctx) {
-        appendRegularPolygon(path, ctx, 6, -M_PI / 2.0, 1.0);
-    }
-
-    static void buildStar4(QPainterPath &path, const ShapeContext &ctx) {
-        appendStarPolygon(path, ctx, 4, 0.35, -M_PI / 2.0);
-    }
-
-    static void buildStar5(QPainterPath &path, const ShapeContext &ctx) {
-        appendStarPolygon(path, ctx, 5, 0.45, -M_PI / 2.0);
-    }
-
-    static void buildStar6(QPainterPath &path, const ShapeContext &ctx) {
-        appendStarPolygon(path, ctx, 6, 0.5, -M_PI / 2.0);
-    }
-
-    static void buildCross(QPainterPath &path, const ShapeContext &ctx) {
-        const double t = ctx.w * 0.3;
-        path.moveTo(ctx.cx - t / 2, ctx.r.top());
-        path.lineTo(ctx.cx + t / 2, ctx.r.top());
-        path.lineTo(ctx.cx + t / 2, ctx.cy - t / 2);
-        path.lineTo(ctx.r.right(), ctx.cy - t / 2);
-        path.lineTo(ctx.r.right(), ctx.cy + t / 2);
-        path.lineTo(ctx.cx + t / 2, ctx.cy + t / 2);
-        path.lineTo(ctx.cx + t / 2, ctx.r.bottom());
-        path.lineTo(ctx.cx - t / 2, ctx.r.bottom());
-        path.lineTo(ctx.cx - t / 2, ctx.cy + t / 2);
-        path.lineTo(ctx.r.left(), ctx.cy + t / 2);
-        path.lineTo(ctx.r.left(), ctx.cy - t / 2);
-        path.lineTo(ctx.cx - t / 2, ctx.cy - t / 2);
-        path.closeSubpath();
-    }
-
-    static void buildPlus(QPainterPath &path, const ShapeContext &ctx) {
-        const double t = ctx.w * 0.35;
-        path.addRect(ctx.cx - t / 2, ctx.r.top(), t, ctx.h);
-        path.addRect(ctx.r.left(), ctx.cy - t / 2, ctx.w, t);
-    }
-
-    static void buildX(QPainterPath &path, const ShapeContext &ctx) {
-        const double t = ctx.w * 0.25;
-        QPolygonF poly;
-        poly << QPointF(ctx.r.left() + t, ctx.r.top())
-             << QPointF(ctx.cx, ctx.cy - t)
-             << QPointF(ctx.r.right() - t, ctx.r.top())
-             << QPointF(ctx.r.right(), ctx.r.top() + t)
-             << QPointF(ctx.cx + t, ctx.cy)
-             << QPointF(ctx.r.right(), ctx.r.bottom() - t)
-             << QPointF(ctx.r.right() - t, ctx.r.bottom())
-             << QPointF(ctx.cx, ctx.cy + t)
-             << QPointF(ctx.r.left() + t, ctx.r.bottom())
-             << QPointF(ctx.r.left(), ctx.r.bottom() - t)
-             << QPointF(ctx.cx - t, ctx.cy)
-             << QPointF(ctx.r.left(), ctx.r.top() + t);
-        appendPolygonFromPoints(path, poly);
-    }
-
-    static void buildArrow(QPainterPath &path, const ShapeContext &ctx) {
-        const double bodyH = ctx.h * 0.4;
-        const double headW = ctx.w * 0.45;
-        path.moveTo(ctx.r.left(), ctx.cy - bodyH / 2);
-        path.lineTo(ctx.r.right() - headW, ctx.cy - bodyH / 2);
-        path.lineTo(ctx.r.right() - headW, ctx.r.top());
-        path.lineTo(ctx.r.right(), ctx.cy);
-        path.lineTo(ctx.r.right() - headW, ctx.r.bottom());
-        path.lineTo(ctx.r.right() - headW, ctx.cy + bodyH / 2);
-        path.lineTo(ctx.r.left(), ctx.cy + bodyH / 2);
-        path.closeSubpath();
-    }
-
-    static void buildHeart(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx, ctx.r.top() + ctx.h * 0.3);
-        path.cubicTo(ctx.r.left() + ctx.w * 0.1, ctx.r.top() - ctx.h * 0.05,
-                     ctx.r.left(), ctx.r.top() + ctx.h * 0.55,
-                     ctx.cx, ctx.r.bottom());
-        path.cubicTo(ctx.r.right(), ctx.r.top() + ctx.h * 0.55,
-                     ctx.r.right() - ctx.w * 0.1, ctx.r.top() - ctx.h * 0.05,
-                     ctx.cx, ctx.r.top() + ctx.h * 0.3);
-    }
-
-    static void buildLine(QPainterPath &path, const ShapeContext &ctx) {
-        const double t = qMax(1.0, ctx.h * 0.15);
-        path.addRect(ctx.r.left(), ctx.cy - t / 2, ctx.w, t);
-    }
-
-    static void buildPencilTip(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx, ctx.r.top());
-        path.lineTo(ctx.r.left() + ctx.w * 0.25, ctx.r.bottom());
-        path.lineTo(ctx.r.right() - ctx.w * 0.25, ctx.r.bottom());
-        path.closeSubpath();
-    }
-
-    static void buildFlatTip(QPainterPath &path, const ShapeContext &ctx) {
-        const double fh = ctx.h * 0.45;
-        path.addRoundedRect(ctx.r.left(), ctx.cy - fh / 2, ctx.w, fh, fh * 0.3, fh * 0.3);
-    }
-
-    static void buildChiselTip(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.r.left() + ctx.w * 0.15, ctx.r.top());
-        path.lineTo(ctx.r.right() - ctx.w * 0.15, ctx.r.top());
-        path.lineTo(ctx.r.right(), ctx.r.bottom());
-        path.lineTo(ctx.r.left(), ctx.r.bottom());
-        path.closeSubpath();
-    }
-
-    static void buildLeaf(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.r.left(), ctx.r.bottom());
-        path.cubicTo(ctx.r.left(), ctx.r.top() + ctx.h * 0.2,
-                     ctx.cx, ctx.r.top(),
-                     ctx.r.right(), ctx.r.top());
-        path.cubicTo(ctx.r.right(), ctx.r.top() + ctx.h * 0.6,
-                     ctx.cx + ctx.w * 0.2, ctx.r.bottom(),
-                     ctx.r.left(), ctx.r.bottom());
-        path.closeSubpath();
-    }
-
-    static void buildDrop(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx, ctx.r.top());
-        path.cubicTo(ctx.cx + ctx.w * 0.4, ctx.r.top() + ctx.h * 0.4,
-                     ctx.r.right(), ctx.cy + ctx.h * 0.15,
-                     ctx.cx, ctx.r.bottom());
-        path.cubicTo(ctx.r.left(), ctx.cy + ctx.h * 0.15,
-                     ctx.cx - ctx.w * 0.4, ctx.r.top() + ctx.h * 0.4,
-                     ctx.cx, ctx.r.top());
-        path.closeSubpath();
-    }
-
-    static void buildCrescent(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx + ctx.w * 0.15, ctx.r.top());
-        path.arcTo(ctx.r, 270, 180);
-        path.cubicTo(ctx.cx - ctx.w * 0.05, ctx.r.top() + ctx.h * 0.75,
-                     ctx.cx - ctx.w * 0.05, ctx.r.top() + ctx.h * 0.25,
-                     ctx.cx + ctx.w * 0.15, ctx.r.top());
-        path.closeSubpath();
-    }
-
-    static void buildRing(QPainterPath &path, const ShapeContext &ctx) {
-        path.addEllipse(ctx.r);
-        const double inset = ctx.w * 0.2;
-        path.addEllipse(ctx.r.adjusted(inset, inset, -inset, -inset));
-    }
-
-    static void buildHalfCircle(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.r.left(), ctx.cy);
-        path.arcTo(ctx.r, 180, 180);
-        path.closeSubpath();
-    }
-
-    static void buildSparkle(QPainterPath &path, const ShapeContext &ctx) {
-        const double inner = 0.2;
-        path.moveTo(ctx.cx, ctx.r.top());
-        path.quadTo(ctx.cx + ctx.w * inner, ctx.cy - ctx.h * inner, ctx.r.right(), ctx.cy);
-        path.quadTo(ctx.cx + ctx.w * inner, ctx.cy + ctx.h * inner, ctx.cx, ctx.r.bottom());
-        path.quadTo(ctx.cx - ctx.w * inner, ctx.cy + ctx.h * inner, ctx.r.left(), ctx.cy);
-        path.quadTo(ctx.cx - ctx.w * inner, ctx.cy - ctx.h * inner, ctx.cx, ctx.r.top());
-        path.closeSubpath();
-    }
-
-    static void buildClover(QPainterPath &path, const ShapeContext &ctx) {
-        const double lr = ctx.w * 0.22;
-        path.addEllipse(ctx.cx - lr, ctx.cy - lr * 2, lr * 2, lr * 2);
-        path.addEllipse(ctx.cx - lr * 2, ctx.cy - lr, lr * 2, lr * 2);
-        path.addEllipse(ctx.cx, ctx.cy - lr, lr * 2, lr * 2);
-        path.addEllipse(ctx.cx - lr, ctx.cy, lr * 2, lr * 2);
-    }
-
-    static void buildGear(QPainterPath &path, const ShapeContext &ctx) {
-        const int teeth = 8;
-        const double outerR = ctx.w / 2.0;
-        const double innerR = ctx.w / 3.0;
-        for (int i = 0; i < teeth * 2; ++i) {
-            double a = i * M_PI / teeth;
-            double rad = (i % 2 == 0) ? outerR : innerR;
-            double px = ctx.cx + rad * cos(a);
-            double py = ctx.cy + rad * sin(a);
-            if (i == 0) path.moveTo(px, py);
-            else        path.lineTo(px, py);
-        }
-        path.closeSubpath();
-        const double holeR = ctx.w * 0.12;
-        path.addEllipse(ctx.cx - holeR, ctx.cy - holeR, holeR * 2, holeR * 2);
-    }
-
-    static void buildLightning(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx + ctx.w * 0.08, ctx.r.top());
-        path.lineTo(ctx.cx - ctx.w * 0.28, ctx.cy + ctx.h * 0.05);
-        path.lineTo(ctx.cx - ctx.w * 0.02, ctx.cy + ctx.h * 0.05);
-        path.lineTo(ctx.cx - ctx.w * 0.12, ctx.r.bottom());
-        path.lineTo(ctx.cx + ctx.w * 0.28, ctx.cy - ctx.h * 0.05);
-        path.lineTo(ctx.cx + ctx.w * 0.02, ctx.cy - ctx.h * 0.05);
-        path.lineTo(ctx.cx + ctx.w * 0.18, ctx.r.top());
-        path.closeSubpath();
-    }
-
-    static void buildMusicNote(QPainterPath &path, const ShapeContext &ctx) {
-        const double headR = ctx.w * 0.13;
-        path.addEllipse(QPointF(ctx.cx - ctx.w * 0.10, ctx.cy + ctx.h * 0.28), headR, headR * 0.8);
-        path.addRect(QRectF(ctx.cx + ctx.w * 0.02, ctx.r.top() + ctx.h * 0.05, ctx.w * 0.05, ctx.h * 0.45));
-        path.moveTo(ctx.cx + ctx.w * 0.07, ctx.r.top() + ctx.h * 0.05);
-        path.cubicTo(ctx.cx + ctx.w * 0.32, ctx.r.top() + ctx.h * 0.15,
-                     ctx.cx + ctx.w * 0.32, ctx.r.top() + ctx.h * 0.35,
-                     ctx.cx + ctx.w * 0.10, ctx.r.top() + ctx.h * 0.35);
-        path.lineTo(ctx.cx + ctx.w * 0.07, ctx.r.top() + ctx.h * 0.28);
-        path.cubicTo(ctx.cx + ctx.w * 0.20, ctx.r.top() + ctx.h * 0.28,
-                     ctx.cx + ctx.w * 0.20, ctx.r.top() + ctx.h * 0.18,
-                     ctx.cx + ctx.w * 0.07, ctx.r.top() + ctx.h * 0.18);
-        path.closeSubpath();
-    }
-
-    static void buildFlower(QPainterPath &path, const ShapeContext &ctx) {
-        const int petals = 5;
-        const double petalR = ctx.w * 0.20;
-        for (int i = 0; i < petals; ++i) {
-            double a = -M_PI / 2.0 + i * 2.0 * M_PI / petals;
-            double px = ctx.cx + ctx.w * 0.20 * cos(a);
-            double py = ctx.cy + ctx.h * 0.20 * sin(a);
-            path.addEllipse(QPointF(px, py), petalR, petalR);
-        }
-        path.addEllipse(QPointF(ctx.cx, ctx.cy), ctx.w * 0.10, ctx.h * 0.10);
-    }
-
-    static void buildButterfly(QPainterPath &path, const ShapeContext &ctx) {
-        path.addEllipse(QPointF(ctx.cx, ctx.cy), ctx.w * 0.04, ctx.h * 0.30);
-        path.moveTo(ctx.cx - ctx.w * 0.04, ctx.cy - ctx.h * 0.05);
-        path.cubicTo(ctx.cx - ctx.w * 0.45, ctx.cy - ctx.h * 0.45,
-                     ctx.cx - ctx.w * 0.50, ctx.cy + ctx.h * 0.10,
-                     ctx.cx - ctx.w * 0.04, ctx.cy + ctx.h * 0.10);
-        path.closeSubpath();
-        path.moveTo(ctx.cx - ctx.w * 0.04, ctx.cy + ctx.h * 0.05);
-        path.cubicTo(ctx.cx - ctx.w * 0.40, ctx.cy + ctx.h * 0.25,
-                     ctx.cx - ctx.w * 0.35, ctx.cy + ctx.h * 0.50,
-                     ctx.cx - ctx.w * 0.04, ctx.cy + ctx.h * 0.30);
-        path.closeSubpath();
-        path.moveTo(ctx.cx + ctx.w * 0.04, ctx.cy - ctx.h * 0.05);
-        path.cubicTo(ctx.cx + ctx.w * 0.45, ctx.cy - ctx.h * 0.45,
-                     ctx.cx + ctx.w * 0.50, ctx.cy + ctx.h * 0.10,
-                     ctx.cx + ctx.w * 0.04, ctx.cy + ctx.h * 0.10);
-        path.closeSubpath();
-        path.moveTo(ctx.cx + ctx.w * 0.04, ctx.cy + ctx.h * 0.05);
-        path.cubicTo(ctx.cx + ctx.w * 0.40, ctx.cy + ctx.h * 0.25,
-                     ctx.cx + ctx.w * 0.35, ctx.cy + ctx.h * 0.50,
-                     ctx.cx + ctx.w * 0.04, ctx.cy + ctx.h * 0.30);
-        path.closeSubpath();
-    }
-
-    static void buildCloud(QPainterPath &path, const ShapeContext &ctx) {
-        path.addEllipse(QPointF(ctx.cx - ctx.w * 0.20, ctx.cy + ctx.h * 0.05), ctx.w * 0.20, ctx.h * 0.20);
-        path.addEllipse(QPointF(ctx.cx + ctx.w * 0.20, ctx.cy + ctx.h * 0.05), ctx.w * 0.22, ctx.h * 0.22);
-        path.addEllipse(QPointF(ctx.cx - ctx.w * 0.05, ctx.cy - ctx.h * 0.10), ctx.w * 0.25, ctx.h * 0.25);
-        path.addEllipse(QPointF(ctx.cx + ctx.w * 0.15, ctx.cy - ctx.h * 0.05), ctx.w * 0.20, ctx.h * 0.20);
-        path.addEllipse(QPointF(ctx.cx, ctx.cy + ctx.h * 0.15), ctx.w * 0.30, ctx.h * 0.15);
-    }
-
-    static void buildSpeech(QPainterPath &path, const ShapeContext &ctx) {
-        const double rad = ctx.w * 0.10;
-        path.addRoundedRect(QRectF(ctx.r.left(), ctx.r.top(), ctx.w, ctx.h * 0.75), rad, rad);
-        path.moveTo(ctx.cx - ctx.w * 0.15, ctx.r.top() + ctx.h * 0.75);
-        path.lineTo(ctx.cx - ctx.w * 0.20, ctx.r.bottom());
-        path.lineTo(ctx.cx + ctx.w * 0.05, ctx.r.top() + ctx.h * 0.75);
-        path.closeSubpath();
-    }
-
-    static void buildLocationPin(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.cx, ctx.r.bottom());
-        path.cubicTo(ctx.cx - ctx.w * 0.4, ctx.cy + ctx.h * 0.1,
-                     ctx.r.left(), ctx.r.top(),
-                     ctx.cx, ctx.r.top());
-        path.cubicTo(ctx.r.right(), ctx.r.top(),
-                     ctx.cx + ctx.w * 0.4, ctx.cy + ctx.h * 0.1,
-                     ctx.cx, ctx.r.bottom());
-        path.closeSubpath();
-        const double holeR = ctx.w * 0.12;
-        path.addEllipse(QPointF(ctx.cx, ctx.cy - ctx.h * 0.05), holeR, holeR);
-    }
-
-    static void buildWave(QPainterPath &path, const ShapeContext &ctx) {
-        path.moveTo(ctx.r.left(), ctx.cy);
-        path.cubicTo(ctx.r.left() + ctx.w * 0.15, ctx.r.top(),
-                     ctx.r.left() + ctx.w * 0.35, ctx.r.top(),
-                     ctx.cx, ctx.cy);
-        path.cubicTo(ctx.cx + ctx.w * 0.15, ctx.r.bottom(),
-                     ctx.cx + ctx.w * 0.35, ctx.r.bottom(),
-                     ctx.r.right(), ctx.cy);
-        path.cubicTo(ctx.cx + ctx.w * 0.35, ctx.cy + ctx.h * 0.35,
-                     ctx.cx + ctx.w * 0.15, ctx.cy + ctx.h * 0.35,
-                     ctx.cx, ctx.cy + ctx.h * 0.02);
-        path.cubicTo(ctx.r.left() + ctx.w * 0.35, ctx.cy - ctx.h * 0.02,
-                     ctx.r.left() + ctx.w * 0.15, ctx.cy - ctx.h * 0.02,
-                     ctx.r.left(), ctx.cy);
-        path.closeSubpath();
-    }
-
-    static void buildSpiral(QPainterPath &path, const ShapeContext &ctx) {
-        const int steps = 80;
-        const double turns = 3.0;
-        const double maxR = ctx.w * 0.45;
-        for (int i = 0; i <= steps; ++i) {
-            double t = (double)i / steps;
-            double a = t * turns * 2.0 * M_PI;
-            double rad = t * maxR;
-            double px = ctx.cx + rad * cos(a);
-            double py = ctx.cy + rad * sin(a);
-            if (i == 0) path.moveTo(px, py);
-            else        path.lineTo(px, py);
-        }
-    }
-
-    static void buildStarMany(QPainterPath &path, const ShapeContext &ctx) {
-        const int points = 16;
-        const double outerR = ctx.w * 0.5;
-        const double innerR = ctx.w * 0.20;
-        for (int i = 0; i < points * 2; ++i) {
-            double a = -M_PI / 2.0 + i * M_PI / points;
-            double rad = (i % 2 == 0) ? outerR : innerR;
-            double px = ctx.cx + rad * cos(a);
-            double py = ctx.cy + rad * sin(a);
-            if (i == 0) path.moveTo(px, py);
-            else        path.lineTo(px, py);
-        }
-        path.closeSubpath();
-    }
-
-    static void buildInfinity(QPainterPath &path, const ShapeContext &ctx) {
-        const double rW = ctx.w * 0.28;
-        const double rH = ctx.h * 0.28;
-        const double off = ctx.w * 0.22;
-        QPainterPath left, right;
-        left.addEllipse(QPointF(ctx.cx - off, ctx.cy), rW, rH);
-        right.addEllipse(QPointF(ctx.cx + off, ctx.cy), rW, rH);
-        path = left.united(right);
-        QPainterPath innerL, innerR;
-        innerL.addEllipse(QPointF(ctx.cx - off, ctx.cy), rW * 0.55, rH * 0.55);
-        innerR.addEllipse(QPointF(ctx.cx + off, ctx.cy), rW * 0.55, rH * 0.55);
-        path = path.subtracted(innerL.united(innerR));
-        QPainterPath center;
-        center.addEllipse(QPointF(ctx.cx, ctx.cy), rW * 0.18, rH * 0.18);
-        path = path.united(center);
-    }
-
-    static void buildDiamondStar(QPainterPath &path, const ShapeContext &ctx) {
-        const double outerX = ctx.w * 0.5;
-        const double outerY = ctx.h * 0.5;
-        const double innerX = ctx.w * 0.15;
-        const double innerY = ctx.h * 0.15;
-        path.moveTo(ctx.cx, ctx.cy - outerY);
-        path.lineTo(ctx.cx + innerX, ctx.cy - innerY);
-        path.lineTo(ctx.cx + outerX, ctx.cy);
-        path.lineTo(ctx.cx + innerX, ctx.cy + innerY);
-        path.lineTo(ctx.cx, ctx.cy + outerY);
-        path.lineTo(ctx.cx - innerX, ctx.cy + innerY);
-        path.lineTo(ctx.cx - outerX, ctx.cy);
-        path.lineTo(ctx.cx - innerX, ctx.cy - innerY);
-        path.closeSubpath();
-    }
-
-    // ============================================================
-    // DISPATCHER PRINCIPAL — baseShapePath (ahora delgado)
-    // ============================================================
+    // ------------------------------------------------------------
+    // baseShapePath — ahora delgado, delega en ShapePathBuilder
+    // ------------------------------------------------------------
     static QPainterPath baseShapePath(ShapeType shape) {
         static QHash<int, QPainterPath> cache;
         const int key = (int)shape;
         auto it = cache.constFind(key);
         if (it != cache.constEnd()) return it.value();
 
-        ShapeContext ctx;
-        QPainterPath path;
-        ctx.r = QRectF(-50.0, -50.0, 100.0, 100.0);
-        ctx.cx = ctx.r.center().x();
-        ctx.cy = ctx.r.center().y();
-        ctx.w  = ctx.r.width();
-        ctx.h  = ctx.r.height();
-
-        switch (shape) {
-        case ShapeType::Circle:        buildCircle(path, ctx);        break;
-        case ShapeType::Square:        buildSquare(path, ctx);        break;
-        case ShapeType::RoundedSquare: buildRoundedSquare(path, ctx); break;
-        case ShapeType::Diamond:       buildDiamond(path, ctx);       break;
-        case ShapeType::Triangle:      buildTriangle(path, ctx);      break;
-        case ShapeType::RightTriangle: buildRightTriangle(path, ctx); break;
-        case ShapeType::Pentagon:      buildPentagon(path, ctx);      break;
-        case ShapeType::Hexagon:       buildHexagon(path, ctx);       break;
-        case ShapeType::Star4:         buildStar4(path, ctx);         break;
-        case ShapeType::Star5:         buildStar5(path, ctx);         break;
-        case ShapeType::Star6:         buildStar6(path, ctx);         break;
-        case ShapeType::Cross:         buildCross(path, ctx);         break;
-        case ShapeType::Plus:          buildPlus(path, ctx);          break;
-        case ShapeType::X:             buildX(path, ctx);             break;
-        case ShapeType::Arrow:         buildArrow(path, ctx);         break;
-        case ShapeType::Heart:         buildHeart(path, ctx);         break;
-        case ShapeType::Line:          buildLine(path, ctx);          break;
-        case ShapeType::PencilTip:     buildPencilTip(path, ctx);     break;
-        case ShapeType::FlatTip:       buildFlatTip(path, ctx);       break;
-        case ShapeType::ChiselTip:     buildChiselTip(path, ctx);     break;
-        case ShapeType::Leaf:          buildLeaf(path, ctx);          break;
-        case ShapeType::Drop:          buildDrop(path, ctx);          break;
-        case ShapeType::Crescent:      buildCrescent(path, ctx);      break;
-        case ShapeType::Ring:          buildRing(path, ctx);          break;
-        case ShapeType::HalfCircle:    buildHalfCircle(path, ctx);    break;
-        case ShapeType::Sparkle:       buildSparkle(path, ctx);       break;
-        case ShapeType::Clover:        buildClover(path, ctx);        break;
-        case ShapeType::Gear:          buildGear(path, ctx);          break;
-        case ShapeType::Lightning:     buildLightning(path, ctx);     break;
-        case ShapeType::MusicNote:     buildMusicNote(path, ctx);     break;
-        case ShapeType::Flower:        buildFlower(path, ctx);        break;
-        case ShapeType::Butterfly:     buildButterfly(path, ctx);     break;
-        case ShapeType::Cloud:         buildCloud(path, ctx);         break;
-        case ShapeType::Speech:        buildSpeech(path, ctx);        break;
-        case ShapeType::LocationPin:   buildLocationPin(path, ctx);   break;
-        case ShapeType::Wave:          buildWave(path, ctx);          break;
-        case ShapeType::Spiral:        buildSpiral(path, ctx);        break;
-        case ShapeType::StarMany:      buildStarMany(path, ctx);      break;
-        case ShapeType::Infinity:      buildInfinity(path, ctx);      break;
-        case ShapeType::DiamondStar:   buildDiamondStar(path, ctx);   break;
-        case ShapeType::CustomStamp:   break;
-        }
-
+        QPainterPath path = ShapePathBuilder::build(shape);
         it = cache.insert(key, path);
         return it.value();
     }
 
-    // ============================================================
-    // TRANSFORMACIONES
-    // ============================================================
     static QPainterPath transformedShapePath(ShapeType shape, const QRectF &r) {
         if (r.width() <= 0.0 || r.height() <= 0.0) return QPainterPath();
         if (shape == ShapeType::CustomStamp) return QPainterPath();
@@ -693,9 +770,9 @@ public:
         return transformedShapePath(shape, r);
     }
 
-    // ============================================================
-    // TINTADO (opcional)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Tintado
+    // ------------------------------------------------------------
     static QImage tintImage(const QImage &src, const QColor &color) {
         if (src.isNull()) return src;
         QImage result = src.convertToFormat(QImage::Format_ARGB32);
@@ -708,18 +785,15 @@ public:
                 const int a = qAlpha(px);
                 if (a == 0) continue;
                 const int lum = qGray(px);
-                const int nr = (cr * lum) / 255;
-                const int ng = (cg * lum) / 255;
-                const int nb = (cb * lum) / 255;
-                line[x] = qRgba(nr, ng, nb, a);
+                line[x] = qRgba((cr * lum) / 255, (cg * lum) / 255, (cb * lum) / 255, a);
             }
         }
         return result;
     }
 
-    // ============================================================
-    // HELPERS PARA ASPECT RATIO (evita duplicación)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Helpers de aspect ratio
+    // ------------------------------------------------------------
     static QRectF aspectRect(double cx, double cy, double size, double aspectRatio) {
         QRectF target(cx - size / 2.0, cy - size / 2.0, size, size);
         if (aspectRatio < 1.0) {
@@ -745,9 +819,9 @@ public:
         return target;
     }
 
-    // ============================================================
-    // DIBUJAR PRIMITIVA
-    // ============================================================
+    // ------------------------------------------------------------
+    // Dibujar primitiva
+    // ------------------------------------------------------------
     static void drawShapePrimitive(QPainter &painter, ShapeType shape, const QRectF &r,
                                    const QColor &color, const QImage &customImage = QImage()) {
         if (r.width() <= 0.0 || r.height() <= 0.0) return;
@@ -785,9 +859,9 @@ public:
         painter.drawPath(transformedShapePath(shape, r));
     }
 
-    // ============================================================
-    // SILUETA DEL PINCEL
-    // ============================================================
+    // ------------------------------------------------------------
+    // Silueta del pincel
+    // ------------------------------------------------------------
     static void drawBrushSilhouette(QPainter &painter, const BrushSettings &config,
                                     double size, const QPointF &center) {
         painter.save();
@@ -835,9 +909,9 @@ public:
         drawShapeOutline(painter, config.shape, shapeRect, config.customStampImage);
     }
 
-    // ============================================================
-    // BREATH FACTOR (para flujo)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Breath factor
+    // ------------------------------------------------------------
     static double computeBreathFactor(double accumulatedLength, int brushSize, int flow) {
         if (flow >= 100) return 1.0;
         if (brushSize < 1) brushSize = 1;
@@ -854,9 +928,9 @@ public:
         return qBound(0.05, factor, 1.0);
     }
 
-    // ============================================================
-    // GRANULACIÓN (extraído)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Granulación
+    // ------------------------------------------------------------
     static void applyGranulation(QPainter &p, int canvasW, int canvasH, double angle) {
         p.setCompositionMode(QPainter::CompositionMode_SourceAtop);
         p.setRenderHint(QPainter::Antialiasing, false);
@@ -895,9 +969,9 @@ public:
         p.setCompositionMode(QPainter::CompositionMode_SourceOver);
     }
 
-    // ============================================================
-    // DIBUJAR SHAPE CON O SIN GRADIENTE (extraído)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Pintar shape con o sin gradiente
+    // ------------------------------------------------------------
     static void paintShapeWithColor(QPainter &p, ShapeType shape, const QRectF &r,
                                     const QColor &color, bool doGradient,
                                     const QColor &c1, const QColor &c2) {
@@ -913,9 +987,9 @@ public:
         }
     }
 
-    // ============================================================
-    // STAMP DE FIGURA SIMPLE (sin composición)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Stamp simple (sin composición)
+    // ------------------------------------------------------------
     static void paintSingleStampShape(QPainter &p, const BrushSettings &config,
                                       const QColor &baseColor, const QColor &secondColor,
                                       double alpha, int canvasW, int canvasH,
@@ -961,14 +1035,12 @@ public:
         p.restore();
     }
 
-    // ============================================================
-    // STAMP COMPUESTO
-    // ============================================================
+    // ------------------------------------------------------------
+    // Stamp compuesto
+    // ------------------------------------------------------------
     static void paintCompositeStamp(QPainter &p, const BrushSettings &config,
                                     const QColor &baseColor, const QColor &secondColor,
                                     double alpha, double size) {
-        const double cx = config.size * 6.0 + 12.0;
-        Q_UNUSED(cx);
         const double centerX = p.device()->width() / 2.0;
         const double centerY = p.device()->height() / 2.0;
         const double spread = size * 1.5;
@@ -979,40 +1051,46 @@ public:
         p.rotate(config.angle);
 
         for (const ShapeElement &el : config.shapeElements) {
-            const double elCx = el.offsetX * spread;
-            const double elCy = el.offsetY * spread;
-            const double elSize = size * el.scale;
-            const QRectF r(elCx - elSize / 2, elCy - elSize / 2, elSize, elSize);
-            const double elAlpha = alpha * (el.opacity / 100.0);
-
-            p.save();
-            p.translate(elCx, elCy);
-            p.rotate(el.rotation);
-            p.translate(-elCx, -elCy);
-
-            if (el.shape == ShapeType::CustomStamp) {
-                if (!el.customImage.isNull()) {
-                    p.setOpacity(qBound(0.0, elAlpha, 1.0));
-                    p.drawImage(r, el.customImage);
-                    p.setOpacity(1.0);
-                }
-            } else if (doGradient) {
-                QColor c1 = baseColor; c1.setAlphaF(qBound(0.0, elAlpha, 1.0));
-                QColor c2 = secondColor; c2.setAlphaF(qBound(0.0, elAlpha, 1.0));
-                paintShapeWithColor(p, el.shape, r, baseColor, true, c1, c2);
-            } else {
-                QColor c = baseColor;
-                c.setAlphaF(qBound(0.0, elAlpha, 1.0));
-                drawShapePrimitive(p, el.shape, r, c);
-            }
-            p.restore();
+            paintCompositeElement(p, el, baseColor, secondColor, alpha, spread, doGradient);
         }
         p.restore();
     }
 
-    // ============================================================
-    // GENERAR STAMP PRINCIPAL
-    // ============================================================
+    static void paintCompositeElement(QPainter &p, const ShapeElement &el,
+                                      const QColor &baseColor, const QColor &secondColor,
+                                      double alpha, double spread, bool doGradient) {
+        const double elCx = el.offsetX * spread;
+        const double elCy = el.offsetY * spread;
+        const double elSize = el.scale * (spread / 1.5);
+        const QRectF r(elCx - elSize / 2, elCy - elSize / 2, elSize, elSize);
+        const double elAlpha = alpha * (el.opacity / 100.0);
+
+        p.save();
+        p.translate(elCx, elCy);
+        p.rotate(el.rotation);
+        p.translate(-elCx, -elCy);
+
+        if (el.shape == ShapeType::CustomStamp) {
+            if (!el.customImage.isNull()) {
+                p.setOpacity(qBound(0.0, elAlpha, 1.0));
+                p.drawImage(r, el.customImage);
+                p.setOpacity(1.0);
+            }
+        } else if (doGradient) {
+            QColor c1 = baseColor; c1.setAlphaF(qBound(0.0, elAlpha, 1.0));
+            QColor c2 = secondColor; c2.setAlphaF(qBound(0.0, elAlpha, 1.0));
+            paintShapeWithColor(p, el.shape, r, baseColor, true, c1, c2);
+        } else {
+            QColor c = baseColor;
+            c.setAlphaF(qBound(0.0, elAlpha, 1.0));
+            drawShapePrimitive(p, el.shape, r, c);
+        }
+        p.restore();
+    }
+
+    // ------------------------------------------------------------
+    // generateBrushStamp — dispatcher delgado
+    // ------------------------------------------------------------
     static QImage generateBrushStamp(const BrushSettings &config, const QColor &baseColor,
                                      int penOpacity, bool pixelArt,
                                      const QColor &secondColor = QColor()) {
@@ -1043,7 +1121,6 @@ public:
 
         const double alpha = (config.opacity / 100.0) * (penOpacity / 255.0);
 
-        // CustomStamp simple (sin composición)
         if (!composite && config.shape == ShapeType::CustomStamp) {
             if (config.customStampImage.isNull()) { p.end(); return stamp; }
             const double cx = canvasW / 2.0, cy = canvasH / 2.0;
@@ -1067,9 +1144,9 @@ public:
         return stamp;
     }
 
-    // ============================================================
-    // HERRAMIENTAS: LÁPIZ GRAFITO, GOMA, MUESTREO, WET MIX
-    // ============================================================
+    // ------------------------------------------------------------
+    // Lápiz grafito
+    // ------------------------------------------------------------
     static void applyGraphitePencil(QImage &image, const QPoint &p1, const QPoint &p2,
                                     const QColor &color, int width, int opacity) {
         if (image.isNull()) return;
@@ -1088,29 +1165,39 @@ public:
             const double t = (double)i / steps;
             const double cx = p1.x() + t * dx;
             const double cy = p1.y() + t * dy;
-            const int grains = 12;
-            for (int g = 0; g < grains; ++g) {
-                const double ang = strokeAngle + (QRandomGenerator::global()->generateDouble() - 0.5) * 1.3;
-                const double r = pow(QRandomGenerator::global()->generateDouble(), 0.65) * coreRadius;
-                const int gx = (int)(cx + cos(ang) * r);
-                const int gy = (int)(cy + sin(ang) * r);
-                if (gx < 0 || gx >= image.width() || gy < 0 || gy >= image.height()) continue;
-                const double pressure = 1.0 - (r / qMax(0.001, coreRadius));
-                QColor gc = color;
-                int h, s, l, a;
-                gc.getHsl(&h, &s, &l, &a);
-                const int nl = qBound(0, l - (int)(35 * softness) + QRandomGenerator::global()->bounded(-18, 19), 255);
-                gc.setHsl(h, (int)(s * 0.25), nl);
-                gc.setAlpha((int)(opacity * (0.18 + 0.5 * softness) * (0.35 + 0.65 * pressure) *
-                                  QRandomGenerator::global()->generateDouble()));
-                painter.setPen(gc);
-                const int glen = 1 + QRandomGenerator::global()->bounded(3);
-                painter.drawLine(gx, gy, gx + (int)(cos(ang) * glen), gy + (int)(sin(ang) * glen));
+            for (int g = 0; g < 12; ++g) {
+                drawGrainPoint(painter, image, color, opacity, softness,
+                               coreRadius, strokeAngle, cx, cy);
             }
         }
         painter.end();
     }
 
+    static void drawGrainPoint(QPainter &painter, const QImage &image, const QColor &color,
+                               int opacity, double softness, double coreRadius,
+                               double strokeAngle, double cx, double cy) {
+        const double ang = strokeAngle + (QRandomGenerator::global()->generateDouble() - 0.5) * 1.3;
+        const double r = pow(QRandomGenerator::global()->generateDouble(), 0.65) * coreRadius;
+        const int gx = (int)(cx + cos(ang) * r);
+        const int gy = (int)(cy + sin(ang) * r);
+        if (gx < 0 || gx >= image.width() || gy < 0 || gy >= image.height()) return;
+
+        const double pressure = 1.0 - (r / qMax(0.001, coreRadius));
+        QColor gc = color;
+        int h, s, l, a;
+        gc.getHsl(&h, &s, &l, &a);
+        const int nl = qBound(0, l - (int)(35 * softness) + QRandomGenerator::global()->bounded(-18, 19), 255);
+        gc.setHsl(h, (int)(s * 0.25), nl);
+        gc.setAlpha((int)(opacity * (0.18 + 0.5 * softness) * (0.35 + 0.65 * pressure) *
+                          QRandomGenerator::global()->generateDouble()));
+        painter.setPen(gc);
+        const int glen = 1 + QRandomGenerator::global()->bounded(3);
+        painter.drawLine(gx, gy, gx + (int)(cos(ang) * glen), gy + (int)(sin(ang) * glen));
+    }
+
+    // ------------------------------------------------------------
+    // Goma
+    // ------------------------------------------------------------
     static void applyEraserLine(QImage &image, const QPoint &p1, const QPoint &p2,
                                 int width, bool softEdge) {
         if (image.isNull()) return;
@@ -1119,22 +1206,7 @@ public:
         painter.setCompositionMode(QPainter::CompositionMode_Clear);
 
         if (softEdge) {
-            const double dx = p2.x() - p1.x();
-            const double dy = p2.y() - p1.y();
-            const double dist = sqrt(dx * dx + dy * dy);
-            const int steps = qMax(1, (int)(dist / 2.0));
-            for (int i = 0; i <= steps; ++i) {
-                const double t = (double)i / steps;
-                const int cx = (int)(p1.x() + t * dx);
-                const int cy = (int)(p1.y() + t * dy);
-                QRadialGradient grad(cx, cy, width);
-                grad.setColorAt(0.0, QColor(0, 0, 0, 255));
-                grad.setColorAt(0.6, QColor(0, 0, 0, 180));
-                grad.setColorAt(1.0, QColor(0, 0, 0, 0));
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(grad);
-                painter.drawEllipse(cx - width, cy - width, width * 2, width * 2);
-            }
+            eraseSoft(painter, p1, p2, width);
         } else {
             painter.setPen(QPen(QColor(0, 0, 0, 255), width, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
             painter.drawLine(p1, p2);
@@ -1142,6 +1214,28 @@ public:
         painter.end();
     }
 
+    static void eraseSoft(QPainter &painter, const QPoint &p1, const QPoint &p2, int width) {
+        const double dx = p2.x() - p1.x();
+        const double dy = p2.y() - p1.y();
+        const double dist = sqrt(dx * dx + dy * dy);
+        const int steps = qMax(1, (int)(dist / 2.0));
+        for (int i = 0; i <= steps; ++i) {
+            const double t = (double)i / steps;
+            const int cx = (int)(p1.x() + t * dx);
+            const int cy = (int)(p1.y() + t * dy);
+            QRadialGradient grad(cx, cy, width);
+            grad.setColorAt(0.0, QColor(0, 0, 0, 255));
+            grad.setColorAt(0.6, QColor(0, 0, 0, 180));
+            grad.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(grad);
+            painter.drawEllipse(cx - width, cy - width, width * 2, width * 2);
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Muestreo de color del canvas
+    // ------------------------------------------------------------
     static QColor sampleCanvasColor(const QImage &image, const QPoint &pos, int radius) {
         if (image.isNull()) return QColor();
         const int x0 = qMax(0, pos.x() - radius);
@@ -1161,8 +1255,7 @@ public:
                 const QRgb *line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
                 for (int x = x0; x <= x1; x += step) {
                     const QRgb px = line[x];
-                    const int a = qAlpha(px);
-                    if (a > 20) { r += qRed(px); g += qGreen(px); b += qBlue(px); count++; }
+                    if (qAlpha(px) > 20) { r += qRed(px); g += qGreen(px); b += qBlue(px); count++; }
                 }
             }
         } else {
@@ -1178,6 +1271,9 @@ public:
         return QColor((int)(r / count), (int)(g / count), (int)(b / count), 255);
     }
 
+    // ------------------------------------------------------------
+    // Wet mix
+    // ------------------------------------------------------------
     static QImage wetMixStamp(const QImage &stamp, const QColor &canvasColor, double wetAmount) {
         QImage result = stamp.copy();
         if (result.isNull()) return result;
@@ -1199,19 +1295,19 @@ public:
                 const QRgb px = line[x];
                 const int a = qAlpha(px);
                 if (a > 0) {
-                    const int nr = (int)(qRed(px) * inv + cr * t);
-                    const int ng = (int)(qGreen(px) * inv + cg * t);
-                    const int nb = (int)(qBlue(px) * inv + cb * t);
-                    line[x] = qRgba(nr, ng, nb, a);
+                    line[x] = qRgba((int)(qRed(px) * inv + cr * t),
+                                    (int)(qGreen(px) * inv + cg * t),
+                                    (int)(qBlue(px) * inv + cb * t),
+                                    a);
                 }
             }
         }
         return result;
     }
 
-    // ============================================================
-    // DIBUJAR STAMP EN POSICIÓN
-    // ============================================================
+    // ------------------------------------------------------------
+    // Dibujar stamp puntual
+    // ------------------------------------------------------------
     static void drawStampAt(QImage &image, const QPoint &pos, const QImage &drawStamp,
                             double angle, double opacity, double scale) {
         if (image.isNull() || drawStamp.isNull()) return;
@@ -1230,9 +1326,24 @@ public:
         painter.end();
     }
 
-    // ============================================================
-    // APLICAR STAMP PUNTUAL
-    // ============================================================
+    // ------------------------------------------------------------
+    // StrokeParameters — Introduce Parameter Object
+    // ------------------------------------------------------------
+    struct StrokeParameters {
+        QImage *image = nullptr;
+        QImage stamp;
+        BrushSettings config;
+        double mouseSensitivity = 1.0;
+        QColor baseColor;
+        QColor secondColor;
+        QColor fallbackCanvasColor;
+        double totalStrokeLength = 0.0;
+        double accumulatedLength = 0.0;
+    };
+
+    // ------------------------------------------------------------
+    // Aplicar stamp puntual (con parámetros extra)
+    // ------------------------------------------------------------
     static void applyCustomBrushStroke(QImage &image, const QPoint &pos,
                                        const QImage &stamp, const BrushSettings &config,
                                        double mouseSensitivity, double extraAngle = 0.0,
@@ -1244,49 +1355,66 @@ public:
         Q_UNUSED(secondColor);
         if (image.isNull() || stamp.isNull()) return;
 
-        int actX = pos.x(), actY = pos.y();
-        if (config.scatter > 0) {
-            const int scatterAmount = (int)(config.scatter * mouseSensitivity);
-            actX += QRandomGenerator::global()->bounded(-scatterAmount, scatterAmount + 1);
-            actY += QRandomGenerator::global()->bounded(-scatterAmount, scatterAmount + 1);
-        }
-
-        double drawAngle = config.angle + extraAngle;
-        if (config.rotationMode == RotationMode::Random)
-            drawAngle += QRandomGenerator::global()->bounded(0, 360);
-        if (config.angleJitter > 0)
-            drawAngle += QRandomGenerator::global()->bounded(-config.angleJitter, config.angleJitter + 1);
-
-        double drawOpacity = config.isAirbrush ? 0.3 : 1.0;
-        drawOpacity *= opacityScale;
-        drawOpacity *= taperFactor;
-        if (config.opacityJitter > 0) {
-            const double jitter = QRandomGenerator::global()->generateDouble() * (config.opacityJitter / 100.0);
-            drawOpacity *= qBound(0.1, 1.0 - jitter, 1.0);
-        }
-
-        double scale = sizeScale * taperFactor;
-        if (config.sizeJitter > 0) {
-            const double jitter = QRandomGenerator::global()->generateDouble() * (config.sizeJitter / 100.0);
-            scale *= qBound(0.3, 1.0 - jitter + QRandomGenerator::global()->generateDouble() * jitter * 2, 1.7);
-        }
+        const QPoint scattered = computeScatterOffset(pos, config, mouseSensitivity);
+        const double drawAngle = computeDrawAngle(config, extraAngle);
+        const double drawOpacity = computeDrawOpacity(config, opacityScale, taperFactor);
+        const double scale = computeDrawScale(config, sizeScale, taperFactor);
 
         QImage drawStamp = stamp;
         if (config.wetMix && baseColor.isValid()) {
             const int sampleRadius = qMax(2, config.size / 2);
-            QColor sampled = sampleCanvasColor(image, QPoint(actX, actY), sampleRadius);
+            QColor sampled = sampleCanvasColor(image, scattered, sampleRadius);
             if (!sampled.isValid() && fallbackCanvasColor.isValid())
                 sampled = fallbackCanvasColor;
             if (sampled.isValid())
                 drawStamp = wetMixStamp(stamp, sampled, config.wetAmount);
         }
 
-        drawStampAt(image, QPoint(actX, actY), drawStamp, drawAngle, drawOpacity, scale);
+        drawStampAt(image, scattered, drawStamp, drawAngle, drawOpacity, scale);
     }
 
-    // ============================================================
-    // APLICAR STAMP EN LÍNEA
-    // ============================================================
+    static QPoint computeScatterOffset(const QPoint &pos, const BrushSettings &config,
+                                       double mouseSensitivity) {
+        if (config.scatter <= 0) return pos;
+        const int scatterAmount = (int)(config.scatter * mouseSensitivity);
+        return QPoint(pos.x() + QRandomGenerator::global()->bounded(-scatterAmount, scatterAmount + 1),
+                      pos.y() + QRandomGenerator::global()->bounded(-scatterAmount, scatterAmount + 1));
+    }
+
+    static double computeDrawAngle(const BrushSettings &config, double extraAngle) {
+        double angle = config.angle + extraAngle;
+        if (config.rotationMode == RotationMode::Random)
+            angle += QRandomGenerator::global()->bounded(0, 360);
+        if (config.angleJitter > 0)
+            angle += QRandomGenerator::global()->bounded(-config.angleJitter, config.angleJitter + 1);
+        return angle;
+    }
+
+    static double computeDrawOpacity(const BrushSettings &config, double opacityScale,
+                                     double taperFactor) {
+        double opacity = config.isAirbrush ? 0.3 : 1.0;
+        opacity *= opacityScale;
+        opacity *= taperFactor;
+        if (config.opacityJitter > 0) {
+            const double jitter = QRandomGenerator::global()->generateDouble() * (config.opacityJitter / 100.0);
+            opacity *= qBound(0.1, 1.0 - jitter, 1.0);
+        }
+        return opacity;
+    }
+
+    static double computeDrawScale(const BrushSettings &config, double sizeScale,
+                                   double taperFactor) {
+        double scale = sizeScale * taperFactor;
+        if (config.sizeJitter > 0) {
+            const double jitter = QRandomGenerator::global()->generateDouble() * (config.sizeJitter / 100.0);
+            scale *= qBound(0.3, 1.0 - jitter + QRandomGenerator::global()->generateDouble() * jitter * 2, 1.7);
+        }
+        return scale;
+    }
+
+    // ------------------------------------------------------------
+    // Spacing y ribbon
+    // ------------------------------------------------------------
     static double computeSpacing(const BrushSettings &config, double mouseSensitivity) {
         double baseSpacing = qMax(1.0, (config.size * qMax(1, 6 - config.density)) / 100.0);
         switch (config.dragMode) {
@@ -1313,6 +1441,9 @@ public:
         lastPoint = to;
     }
 
+    // ------------------------------------------------------------
+    // Aplicar línea de pincel — AHORA DELGADO (extraído)
+    // ------------------------------------------------------------
     static void applyCustomBrushLine(QImage &image, const QPointF &from, const QPointF &to,
                                      const QImage &stamp, const BrushSettings &config,
                                      double mouseSensitivity, QPointF &lastPoint,
@@ -1327,8 +1458,6 @@ public:
         const double dist = sqrt(pow(to.x() - from.x(), 2) + pow(to.y() - from.y(), 2));
         if (dist < 0.5) return;
 
-        const double dirAngle = atan2(to.y() - from.y(), to.x() - from.x()) * 180.0 / M_PI;
-
         if (config.dragMode == DragMode::Ribbon) {
             applyRibbonLine(image, from, to, config, baseColor, lastPoint);
             return;
@@ -1337,55 +1466,81 @@ public:
         const double baseSpacing = computeSpacing(config, mouseSensitivity);
         if (dist < baseSpacing) return;
 
-        QImage lineStamp = stamp;
-        if (config.wetMix && baseColor.isValid()) {
-            QColor sampled = sampleCanvasColor(image, from.toPoint(), qMax(2, config.size / 2));
-            if (!sampled.isValid() && fallbackCanvasColor.isValid())
-                sampled = fallbackCanvasColor;
-            if (sampled.isValid())
-                lineStamp = wetMixStamp(stamp, sampled, config.wetAmount);
-        }
+        const QImage lineStamp = resolveLineStamp(image, from, stamp, config,
+                                                  baseColor, fallbackCanvasColor);
+        const double dirAngle = atan2(to.y() - from.y(), to.x() - from.x()) * 180.0 / M_PI;
 
+        paintSegmentsAlongLine(image, from, to, dist, lineStamp, config,
+                               dirAngle, secondColor, fallbackCanvasColor,
+                               accumulatedLength, baseSpacing);
+
+        lastPoint = to;
+    }
+
+    static QImage resolveLineStamp(const QImage &image, const QPointF &from,
+                                   const QImage &stamp, const BrushSettings &config,
+                                   const QColor &baseColor,
+                                   const QColor &fallbackCanvasColor) {
+        if (!config.wetMix || !baseColor.isValid()) return stamp;
+        QColor sampled = sampleCanvasColor(image, from.toPoint(), qMax(2, config.size / 2));
+        if (!sampled.isValid() && fallbackCanvasColor.isValid())
+            sampled = fallbackCanvasColor;
+        if (sampled.isValid())
+            return wetMixStamp(stamp, sampled, config.wetAmount);
+        return stamp;
+    }
+
+    static void paintSegmentsAlongLine(QImage &image, const QPointF &from, const QPointF &to,
+                                       double dist, const QImage &lineStamp,
+                                       const BrushSettings &config, double dirAngle,
+                                       const QColor &secondColor,
+                                       const QColor &fallbackCanvasColor,
+                                       double accumulatedLength, double baseSpacing) {
         const int steps = qMax(1, (int)(dist / baseSpacing));
         for (int s = 1; s <= steps; ++s) {
             const double t = (double)s / steps;
             const int cx = (int)(from.x() + t * (to.x() - from.x()));
             const int cy = (int)(from.y() + t * (to.y() - from.y()));
 
-            double taperFactor = 1.0;
-            if (config.flow < 100) {
-                const double currentLen = accumulatedLength + t * dist;
-                taperFactor = computeBreathFactor(currentLen, config.size, config.flow);
-            }
-
+            const double taperFactor = computeTaperFactor(config, accumulatedLength, dist, t);
             const double extraAngle = (config.rotationMode == RotationMode::FollowDirection) ? dirAngle : 0.0;
             const double sizeScale = (config.dragMode == DragMode::Dotted) ? 0.7 : 1.0;
             const int densityCount = qBound(1, config.density, 20);
 
             for (int d = 0; d < densityCount; ++d) {
-                int dx = 0, dy = 0;
-                if (densityCount > 1) {
-                    const int jitter = qMax(1, config.size / 4);
-                    dx = QRandomGenerator::global()->bounded(-jitter, jitter + 1);
-                    dy = QRandomGenerator::global()->bounded(-jitter, jitter + 1);
-                }
-                if (config.dragMode == DragMode::Scattered) {
-                    const int extraScatter = qMax(2, config.scatter + config.size / 2);
-                    dx += QRandomGenerator::global()->bounded(-extraScatter, extraScatter + 1);
-                    dy += QRandomGenerator::global()->bounded(-extraScatter, extraScatter + 1);
-                }
-                applyCustomBrushStroke(image, QPoint(cx + dx, cy + dy), lineStamp, config,
-                                       1.0, extraAngle, sizeScale, 1.0,
-                                       QColor(), secondColor, fallbackCanvasColor,
-                                       taperFactor);
+                const QPoint offset = computeDensityOffset(config, densityCount);
+                applyCustomBrushStroke(image, QPoint(cx + offset.x(), cy + offset.y()),
+                                       lineStamp, config, 1.0, extraAngle, sizeScale, 1.0,
+                                       QColor(), secondColor, fallbackCanvasColor, taperFactor);
             }
         }
-        lastPoint = to;
     }
 
-    // ============================================================
-    // WRAPPERS DE RETOQUE
-    // ============================================================
+    static double computeTaperFactor(const BrushSettings &config, double accumulatedLength,
+                                     double dist, double t) {
+        if (config.flow >= 100) return 1.0;
+        const double currentLen = accumulatedLength + t * dist;
+        return computeBreathFactor(currentLen, config.size, config.flow);
+    }
+
+    static QPoint computeDensityOffset(const BrushSettings &config, int densityCount) {
+        int dx = 0, dy = 0;
+        if (densityCount > 1) {
+            const int jitter = qMax(1, config.size / 4);
+            dx = QRandomGenerator::global()->bounded(-jitter, jitter + 1);
+            dy = QRandomGenerator::global()->bounded(-jitter, jitter + 1);
+        }
+        if (config.dragMode == DragMode::Scattered) {
+            const int extraScatter = qMax(2, config.scatter + config.size / 2);
+            dx += QRandomGenerator::global()->bounded(-extraScatter, extraScatter + 1);
+            dy += QRandomGenerator::global()->bounded(-extraScatter, extraScatter + 1);
+        }
+        return QPoint(dx, dy);
+    }
+
+    // ------------------------------------------------------------
+    // Wrappers de retoque
+    // ------------------------------------------------------------
     static void applyBlur(QImage &image, const QPoint &pos, int radius) {
         RetouchTools::applyBlur(image, pos, radius);
     }
@@ -1397,97 +1552,11 @@ public:
         RetouchTools::applyShadowBurn(image, pos, radius, sensitivity, opacity);
     }
 
-    // ============================================================
-    // GEOMETRÍA (figuras vectoriales de la barra de herramientas)
-    // ============================================================
+    // ------------------------------------------------------------
+    // Geometría (delega en GeometryDrawer)
+    // ------------------------------------------------------------
     static void drawGeometry(QPainter &painter, const QPoint &p1, const QPoint &p2, ToolType tool) {
-        const QRect r = QRect(p1, p2).normalized();
-        switch (tool) {
-        case ToolLine:        painter.drawLine(p1, p2); break;
-        case ToolRectangle:   painter.drawRect(r); break;
-        case ToolEllipse:     painter.drawEllipse(r); break;
-        case ToolRoundRect:   painter.drawRoundedRect(r, 12, 12); break;
-        case ToolTriangle: {
-            QPolygon t;
-            t << QPoint((p1.x() + p2.x()) / 2, p1.y())
-              << QPoint(p1.x(), p2.y())
-              << QPoint(p2.x(), p2.y());
-            painter.drawPolygon(t);
-            break;
-        }
-        case ToolRightTriangle: {
-            QPolygon t;
-            t << p1 << QPoint(p1.x(), p2.y()) << p2;
-            painter.drawPolygon(t);
-            break;
-        }
-        case ToolDiamond: {
-            QPolygon t;
-            t << QPoint((p1.x() + p2.x()) / 2, p1.y())
-              << QPoint(p2.x(), (p1.y() + p2.y()) / 2)
-              << QPoint((p1.x() + p2.x()) / 2, p2.y())
-              << QPoint(p1.x(), (p1.y() + p2.y()) / 2);
-            painter.drawPolygon(t);
-            break;
-        }
-        case ToolPentagon:
-        case ToolHexagon:
-        case ToolStar: {
-            const int sides = (tool == ToolPentagon) ? 5 : (tool == ToolHexagon) ? 6 : 10;
-            QPolygon poly;
-            for (int i = 0; i < sides; ++i) {
-                const double angle = -M_PI / 2 + i * 2 * M_PI / (tool == ToolStar ? 5 : sides);
-                const double f = (tool == ToolStar && i % 2 == 1) ? 0.45 : 1.0;
-                poly << QPoint(r.center().x() + r.width() / 2 * f * cos(angle),
-                               r.center().y() + r.height() / 2 * f * sin(angle));
-            }
-            painter.drawPolygon(poly);
-            break;
-        }
-        case ToolArrowRight:
-        case ToolArrowLeft: {
-            const bool right = (tool == ToolArrowRight);
-            const int ym = r.top() + r.height() / 2;
-            const int xb = right ? r.left() + r.width() * 0.55 : r.left() + r.width() * 0.45;
-            const int tk = r.height() * 0.25;
-            QPolygon poly;
-            poly << QPoint(right ? r.left() : r.right(), ym - tk)
-                 << QPoint(xb, ym - tk)
-                 << QPoint(xb, r.top())
-                 << QPoint(right ? r.right() : r.left(), ym)
-                 << QPoint(xb, r.bottom())
-                 << QPoint(xb, ym + tk)
-                 << QPoint(right ? r.left() : r.right(), ym + tk);
-            painter.drawPolygon(poly);
-            break;
-        }
-        case ToolHeart: {
-            QPainterPath path;
-            path.moveTo(r.left() + r.width() / 2, r.top() + r.height() * 0.28);
-            path.cubicTo(r.left() + r.width() * 0.1, r.top() - r.height() * 0.05,
-                         r.left(), r.top() + r.height() * 0.6,
-                         r.left() + r.width() / 2, r.bottom());
-            path.cubicTo(r.right(), r.top() + r.height() * 0.6,
-                         r.right() - r.width() * 0.1, r.top() - r.height() * 0.05,
-                         r.left() + r.width() / 2, r.top() + r.height() * 0.28);
-            painter.drawPath(path);
-            break;
-        }
-        case ToolCube: {
-            int offset = qMin(r.width(), r.height()) * 0.3;
-            if (offset < 4) offset = 4;
-            const QRect front(r.left(), r.top() + offset, r.width() - offset, r.height() - offset);
-            const QRect back(r.left() + offset, r.top(), r.width() - offset, r.height() - offset);
-            painter.drawRect(front);
-            painter.drawRect(back);
-            painter.drawLine(front.topLeft(), back.topLeft());
-            painter.drawLine(front.topRight(), back.topRight());
-            painter.drawLine(front.bottomLeft(), back.bottomLeft());
-            painter.drawLine(front.bottomRight(), back.bottomRight());
-            break;
-        }
-        default: break;
-        }
+        GeometryDrawer::draw(painter, p1, p2, tool);
     }
 
     static void floodFill(QImage &image, const QPoint &start, QColor fillCol) {
@@ -1534,37 +1603,30 @@ inline BrushSettings watercolor() {
     return makePreset(40, ShapeType::Circle, DragMode::Continuous, RotationMode::Random,
                       2, 25, 0.0, 4, 100, 30, 45, 25, 1.0, true, 50, false);
 }
-
 inline BrushSettings oilBrush() {
     return makePreset(30, ShapeType::FlatTip, DragMode::Continuous, RotationMode::FollowDirection,
                       95, 20, 0.0, 2, 100, 10, 15, 8, 0.4, true, 60, false);
 }
-
 inline BrushSettings crayon() {
     return makePreset(40, ShapeType::Clover, DragMode::Continuous, RotationMode::Random,
                       40, 15, 40.0, 2, 100, 20, 30, 100, 1.0, true, 70, true);
 }
-
 inline BrushSettings marker() {
     return makePreset(22, ShapeType::RoundedSquare, DragMode::Continuous, RotationMode::FollowDirection,
                       10, 1, 0.0, 1, 100, 0, 0, 0, 0.5, true, 10, true);
 }
-
 inline BrushSettings calligraphy() {
     return makePreset(18, ShapeType::ChiselTip, DragMode::Continuous, RotationMode::Fixed,
                       90, 0, 45.0, 1, 100, 0, 0, 0, 0.3, false, 50, false);
 }
-
 inline BrushSettings highlighter() {
     return makePreset(28, ShapeType::ChiselTip, DragMode::Ribbon, RotationMode::Fixed,
                       40, 0, 0.0, 1, 100, 0, 0, 0, 0.4, false, 50, false);
 }
-
 inline BrushSettings softBrush() {
     return makePreset(30, ShapeType::Circle, DragMode::Continuous, RotationMode::Fixed,
                       85, 5, 0.0, 1, 100, 10, 0, 5, 1.0, false, 50, false);
 }
-
 inline BrushSettings sprayCan() {
     return makePreset(20, ShapeType::Circle, DragMode::Scattered, RotationMode::Random,
                       70, 40, 0.0, 3, 100, 50, 180, 40, 1.0, false, 50, false, true);
@@ -1593,7 +1655,7 @@ inline bool isArtisticTool(ToolType t) {
 } // namespace ArtisticPresets
 
 // ============================================================
-// SHAPEBUTTON
+// SHAPE BUTTON — computeColors refactorizado con tabla de Look
 // ============================================================
 class ShapeButton : public QPushButton {
     Q_OBJECT
@@ -1653,63 +1715,101 @@ protected:
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-        QColor bg, border, fig;
-        computeColors(bg, border, fig);
+        const ButtonLook look = resolveLook();
+        paintBackground(p, look);
+        paintBorder(p, look);
 
-        p.setPen(Qt::NoPen);
-        p.setBrush(bg);
-        p.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 6, 6);
-
-        p.setPen(QPen(border, isChecked() || (isImportButton && isEmptyImport) ? 2 : 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawRoundedRect(rect().adjusted(1, 1, -2, -2), 6, 6);
-
-        if (isImportButton && isEmptyImport) {
+        if (look.kind == ButtonKind::ImportEmpty) {
             paintImportEmptyIcon(p);
         } else if (shape == ShapeType::CustomStamp && !customImage.isNull()) {
             paintCustomImage(p);
         } else {
-            paintShapeIcon(p, fig);
+            paintShapeIcon(p, look.fig);
         }
     }
 
 private:
-    void computeColors(QColor &bg, QColor &border, QColor &fig) const {
-        if (isImportButton && isEmptyImport) {
-            if (underMouse()) {
-                bg = m_dark ? QColor("#2a4a2a") : QColor("#dcfce7");
-                border = QColor("#22c55e");
-                fig = QColor("#22c55e");
-            } else {
-                bg = m_dark ? QColor("#1f3a1f") : QColor("#f0fdf4");
-                border = QColor("#16a34a");
-                fig = QColor("#22c55e");
-            }
-            return;
-        }
-        if (isImportButton && !isEmptyImport) {
-            if (isChecked()) {
-                bg = m_dark ? QColor("#1a3a5c") : QColor("#eff6ff");
-                border = QColor("#3b82f6");
-            } else if (underMouse()) {
-                bg = m_dark ? QColor("#3a3a3a") : QColor("#f1f5f9");
-                border = QColor("#22c55e");
-            } else {
-                bg = m_dark ? QColor("#2a2a2a") : QColor("#ffffff");
-                border = QColor("#22c55e");
-            }
-            return;
-        }
-        if (isChecked()) {
-            bg = m_dark ? QColor("#1a3a5c") : QColor("#eff6ff");
-            border = QColor("#3b82f6");
-        } else if (underMouse()) {
-            bg = m_dark ? QColor("#3a3a3a") : QColor("#f1f5f9");
-            border = m_dark ? QColor("#555555") : QColor("#cbd5e1");
+    // ============================================================
+    // Lookup table de Look para eliminar la complejidad ciclomática
+    // ============================================================
+    enum class ButtonKind { ImportEmpty, ImportFilled, Regular };
+
+    struct ButtonLook {
+        ButtonKind kind = ButtonKind::Regular;
+        QColor bg;
+        QColor border;
+        QColor fig;
+    };
+
+    ButtonLook resolveLook() const {
+        if (isImportButton && isEmptyImport)
+            return lookImportEmpty();
+        if (isImportButton && !isEmptyImport)
+            return lookImportFilled();
+        return lookRegular();
+    }
+
+    ButtonLook lookImportEmpty() const {
+        ButtonLook look;
+        look.kind = ButtonKind::ImportEmpty;
+        if (underMouse()) {
+            look.bg     = m_dark ? QColor("#2a4a2a") : QColor("#dcfce7");
+            look.border = QColor("#22c55e");
+            look.fig    = QColor("#22c55e");
         } else {
-            bg = m_dark ? QColor("#2a2a2a") : QColor("#ffffff");
-            border = m_dark ? QColor("#3a3a3a") : QColor("#d1d5db");
+            look.bg     = m_dark ? QColor("#1f3a1f") : QColor("#f0fdf4");
+            look.border = QColor("#16a34a");
+            look.fig    = QColor("#22c55e");
         }
+        return look;
+    }
+
+    ButtonLook lookImportFilled() const {
+        ButtonLook look;
+        look.kind = ButtonKind::ImportFilled;
+        if (isChecked()) {
+            look.bg     = m_dark ? QColor("#1a3a5c") : QColor("#eff6ff");
+            look.border = QColor("#3b82f6");
+        } else if (underMouse()) {
+            look.bg     = m_dark ? QColor("#3a3a3a") : QColor("#f1f5f9");
+            look.border = QColor("#22c55e");
+        } else {
+            look.bg     = m_dark ? QColor("#2a2a2a") : QColor("#ffffff");
+            look.border = QColor("#22c55e");
+        }
+        return look;
+    }
+
+    ButtonLook lookRegular() const {
+        ButtonLook look;
+        look.kind = ButtonKind::Regular;
+        if (isChecked()) {
+            look.bg     = m_dark ? QColor("#1a3a5c") : QColor("#eff6ff");
+            look.border = QColor("#3b82f6");
+        } else if (underMouse()) {
+            look.bg     = m_dark ? QColor("#3a3a3a") : QColor("#f1f5f9");
+            look.border = m_dark ? QColor("#555555") : QColor("#cbd5e1");
+        } else {
+            look.bg     = m_dark ? QColor("#2a2a2a") : QColor("#ffffff");
+            look.border = m_dark ? QColor("#3a3a3a") : QColor("#d1d5db");
+        }
+        return look;
+    }
+
+    // ============================================================
+    // Pintado
+    // ============================================================
+    void paintBackground(QPainter &p, const ButtonLook &look) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(look.bg);
+        p.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 6, 6);
+    }
+
+    void paintBorder(QPainter &p, const ButtonLook &look) {
+        const bool strong = isChecked() || (isImportButton && isEmptyImport);
+        p.setPen(QPen(look.border, strong ? 2 : 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(rect().adjusted(1, 1, -2, -2), 6, 6);
     }
 
     void paintImportEmptyIcon(QPainter &p) {
@@ -1745,9 +1845,9 @@ private:
     void paintShapeIcon(QPainter &p, const QColor &fig) {
         const QRectF shapeRect(7, 7, width() - 14, height() - 14);
         QColor fg = fig;
-        if (isChecked()) fg = m_dark ? QColor("#60a5fa") : QColor("#1d4ed8");
-        else if (underMouse()) fg = m_dark ? QColor("#c0c0c0") : QColor("#475569");
-        else fg = m_dark ? QColor("#c0c0c0") : QColor("#475569");
+        if (isChecked())        fg = m_dark ? QColor("#60a5fa") : QColor("#1d4ed8");
+        else if (underMouse())  fg = m_dark ? QColor("#c0c0c0") : QColor("#475569");
+        else                    fg = m_dark ? QColor("#c0c0c0") : QColor("#475569");
         PaintEngine::drawShapePrimitive(p, shape, shapeRect, fg);
     }
 
@@ -1938,36 +2038,39 @@ private:
     void paintElements(QPainter &p) {
         const double baseSize = qMin(width(), height()) * 0.20;
         for (int i = 0; i < elements.size(); ++i) {
-            const ShapeElement &el = elements[i];
-            const double cx = width() / 2.0 + el.offsetX * (width() / 2.0);
-            const double cy = height() / 2.0 + el.offsetY * (height() / 2.0);
-            const double sz = baseSize * el.scale;
-            const QRectF r(cx - sz / 2, cy - sz / 2, sz, sz);
-
-            p.save();
-            p.translate(cx, cy);
-            p.rotate(el.rotation);
-            p.translate(-cx, -cy);
-
-            if (el.shape == ShapeType::CustomStamp && !el.customImage.isNull()) {
-                p.setOpacity(el.opacity / 100.0);
-                p.drawImage(r, el.customImage);
-                p.setOpacity(1.0);
-            } else {
-                QColor c = (i == selectedIndex)
-                               ? QColor("#3b82f6")
-                               : (m_dark ? QColor("#d0d0d0") : QColor("#475569"));
-                c.setAlpha((int)(el.opacity * 2.55));
-                PaintEngine::drawShapePrimitive(p, el.shape, r, c);
-            }
-
-            if (i == selectedIndex) {
-                p.setPen(QPen(QColor("#3b82f6"), 1, Qt::DashLine));
-                p.setBrush(Qt::NoBrush);
-                p.drawRect(r.adjusted(-3, -3, 3, 3));
-            }
-            p.restore();
+            paintSingleElement(p, elements[i], i, baseSize);
         }
+    }
+
+    void paintSingleElement(QPainter &p, const ShapeElement &el, int idx, double baseSize) {
+        const double cx = width() / 2.0 + el.offsetX * (width() / 2.0);
+        const double cy = height() / 2.0 + el.offsetY * (height() / 2.0);
+        const double sz = baseSize * el.scale;
+        const QRectF r(cx - sz / 2, cy - sz / 2, sz, sz);
+
+        p.save();
+        p.translate(cx, cy);
+        p.rotate(el.rotation);
+        p.translate(-cx, -cy);
+
+        if (el.shape == ShapeType::CustomStamp && !el.customImage.isNull()) {
+            p.setOpacity(el.opacity / 100.0);
+            p.drawImage(r, el.customImage);
+            p.setOpacity(1.0);
+        } else {
+            QColor c = (idx == selectedIndex)
+                           ? QColor("#3b82f6")
+                           : (m_dark ? QColor("#d0d0d0") : QColor("#475569"));
+            c.setAlpha((int)(el.opacity * 2.55));
+            PaintEngine::drawShapePrimitive(p, el.shape, r, c);
+        }
+
+        if (idx == selectedIndex) {
+            p.setPen(QPen(QColor("#3b82f6"), 1, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r.adjusted(-3, -3, 3, 3));
+        }
+        p.restore();
     }
 
     void paintBorder(QPainter &p) {
@@ -2031,6 +2134,14 @@ protected:
         const QImage stamp = PaintEngine::generateBrushStamp(
             previewSettings, brushColor, 255, false, secondColor);
 
+        const QVector<QPointF> points = buildPreviewPath();
+        paintPreviewStroke(img, stamp, previewSettings, points);
+
+        cachedPreview = img;
+        dirty = false;
+    }
+
+    QVector<QPointF> buildPreviewPath() const {
         const int steps = qBound(24, width() / 10, 42);
         QVector<QPointF> points;
         points.reserve(steps + 1);
@@ -2040,7 +2151,12 @@ protected:
             const double y = height() / 2.0 + sin(t * M_PI * 2.0) * (height() * 0.22);
             points.append(QPointF(x, y));
         }
+        return points;
+    }
 
+    void paintPreviewStroke(QImage &img, const QImage &stamp,
+                            const BrushSettings &previewSettings,
+                            const QVector<QPointF> &points) {
         QPointF last(-1000, -1000);
         double accum = 0.0;
         for (int i = 0; i < points.size(); ++i) {
@@ -2059,9 +2175,6 @@ protected:
                 last = cur;
             }
         }
-
-        cachedPreview = img;
-        dirty = false;
     }
 
     void paintEvent(QPaintEvent *) override {
@@ -2190,11 +2303,9 @@ private:
     QColor previewColor;
     QColor previewSecondColor;
 
-    // Tema
     QString c_bg, c_panel, c_input, c_text, c_textMuted, c_border, c_borderStrong;
     QString c_accent, c_accentHover, c_hover, c_groove;
 
-    // Widgets
     QRadioButton *radio1 = nullptr;
     QRadioButton *radio2 = nullptr;
     StrokePreview *preview = nullptr;
@@ -2329,7 +2440,7 @@ private:
     }
 
     // ============================================================
-    // FACTORIES DE WIDGETS
+    // FACTORIES
     // ============================================================
     QLabel *makeSectionTitle(const QString &t) {
         QLabel *l = new QLabel(t);
@@ -2368,7 +2479,7 @@ private:
     }
 
     // ============================================================
-    // CONSTRUCCIÓN DE SECCIONES DE LA UI
+    // CONSTRUCCIÓN DE UI
     // ============================================================
     void buildTopRow(QVBoxLayout *mainLayout) {
         QHBoxLayout *topRow = new QHBoxLayout();
@@ -2804,7 +2915,7 @@ private:
     }
 
     // ============================================================
-    // CONEXIONES DE SEÑALES
+    // CONEXIONES
     // ============================================================
     void connectSignals() {
         connect(radio1, &QRadioButton::toggled, this, [this](bool checked) {
