@@ -1,9 +1,8 @@
 #include "ImageFilters.h"
 
 // ============================================================
-// Helpers HSL por canal (estilo Photoshop Hue/Saturation)
+// Helpers HSL
 // ============================================================
-
 static double angDiffHue(double a, double b) {
     double d = fmod(a - b, 360.0);
     if (d > 180.0) d -= 360.0;
@@ -11,7 +10,6 @@ static double angDiffHue(double a, double b) {
     return d;
 }
 
-// Peso del canal (1=Rojos..6=Magentas): efecto lleno ±15°, caída suave hasta ±45°
 static double hslChannelWeight(double hue, int channel) {
     static const double centers[6] = { 0, 60, 120, 180, 240, 300 };
     double d = fabs(angDiffHue(hue, centers[channel - 1]));
@@ -19,7 +17,7 @@ static double hslChannelWeight(double hue, int channel) {
     if (d <= IN)  return 1.0;
     if (d >= OUT) return 0.0;
     double t = (d - IN) / (OUT - IN);
-    return 1.0 - t * t * (3.0 - 2.0 * t); // smoothstep
+    return 1.0 - t * t * (3.0 - 2.0 * t);
 }
 
 static void rgb2hsl(double r, double g, double b, double &h, double &s, double &l) {
@@ -54,19 +52,12 @@ static void hsl2rgb(double h, double s, double l, double &r, double &g, double &
     b = hue2rgb(p, q, h - 1.0/3.0) * 255.0;
 }
 
-// ============================================================
-// Helpers de clamping de píxeles (evitan duplicación masiva)
-// ============================================================
-
-/// Luminancia perceptual segura (clamp a [0,255] antes de qGray).
 static inline int safeLum(double r, double g, double b) {
     return qGray(qBound(0, (int)(r + 0.5), 255),
                  qBound(0, (int)(g + 0.5), 255),
                  qBound(0, (int)(b + 0.5), 255));
 }
 
-/// Empaqueta r,g,b (double, puede estar fuera de rango) y alpha (int) en QRgb,
-/// con rounding +0.5 y clamp a [0,255].
 static inline QRgb clampRgba(double r, double g, double b, int a) {
     return qRgba(qBound(0, (int)(r + 0.5), 255),
                  qBound(0, (int)(g + 0.5), 255),
@@ -75,9 +66,8 @@ static inline QRgb clampRgba(double r, double g, double b, int a) {
 }
 
 // ============================================================
-// HueRangeBar (barra de rangos de tono, visual)
+// HueRangeBar
 // ============================================================
-
 HueRangeBar::HueRangeBar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(52);
     setToolTip(tr("Rango de tono del canal activo (lleno ±15°, caída ±45°)"));
@@ -117,7 +107,6 @@ void HueRangeBar::paintEvent(QPaintEvent *) {
 // ============================================================
 // CurvEditor
 // ============================================================
-
 CurvEditor::CurvEditor(QWidget *parent) : QWidget(parent) {
     setFixedSize(280, 280);
     setCursor(Qt::CrossCursor);
@@ -176,56 +165,78 @@ bool CurvEditor::isIdentity(const QVector<QPointF> &pts) {
            qAbs(pts[1].x() - 255.0) < 0.01 && qAbs(pts[1].y() - 255.0) < 0.01;
 }
 
-void CurvEditor::buildLUT(const QVector<QPointF> &pts, uchar lut[256]) {
+// ------------------------------------------------------------
+// buildLUT dividido en 2
+// ------------------------------------------------------------
+CurvEditor::CurveSpline CurvEditor::computeMonotoneSpline(const QVector<QPointF> &pts) {
+    CurveSpline sp;
     QVector<QPointF> p = pts;
     std::sort(p.begin(), p.end(), [](const QPointF &a, const QPointF &b) { return a.x() < b.x(); });
-    if (p.size() < 2) { for (int i = 0; i < 256; ++i) lut[i] = (uchar)i; return; }
-    if (isIdentity(p)) { for (int i = 0; i < 256; ++i) lut[i] = (uchar)i; return; }
 
-    int n = p.size();
-    QVector<double> xs(n), ys(n);
+    const int n = p.size();
+    sp.xs.resize(n);
+    sp.ys.resize(n);
     for (int i = 0; i < n; ++i) {
-        xs[i] = qBound(0.0, p[i].x(), 255.0);
-        ys[i] = qBound(0.0, p[i].y(), 255.0);
+        sp.xs[i] = qBound(0.0, p[i].x(), 255.0);
+        sp.ys[i] = qBound(0.0, p[i].y(), 255.0);
     }
+
     QVector<double> delta(n - 1);
     for (int i = 0; i < n - 1; ++i) {
-        double dx = xs[i + 1] - xs[i];
-        delta[i] = (qAbs(dx) < 0.0001) ? 0.0 : (ys[i + 1] - ys[i]) / dx;
+        double dx = sp.xs[i + 1] - sp.xs[i];
+        delta[i] = (qAbs(dx) < 0.0001) ? 0.0 : (sp.ys[i + 1] - sp.ys[i]) / dx;
     }
-    QVector<double> m(n);
-    m[0] = delta[0];
-    m[n - 1] = delta[n - 2];
+
+    sp.m.resize(n);
+    sp.m[0] = delta[0];
+    sp.m[n - 1] = delta[n - 2];
     for (int i = 1; i < n - 1; ++i) {
-        if (delta[i - 1] * delta[i] <= 0.0) m[i] = 0.0;
-        else m[i] = (delta[i - 1] + delta[i]) / 2.0;
+        if (delta[i - 1] * delta[i] <= 0.0) sp.m[i] = 0.0;
+        else sp.m[i] = (delta[i - 1] + delta[i]) / 2.0;
     }
+
     for (int i = 0; i < n - 1; ++i) {
-        if (qAbs(delta[i]) < 0.000001) { m[i] = 0.0; m[i + 1] = 0.0; continue; }
-        double a = m[i] / delta[i];
-        double b = m[i + 1] / delta[i];
+        if (qAbs(delta[i]) < 0.000001) { sp.m[i] = 0.0; sp.m[i + 1] = 0.0; continue; }
+        double a = sp.m[i] / delta[i];
+        double b = sp.m[i + 1] / delta[i];
         double s = a * a + b * b;
         if (s > 9.0) {
             double t = 3.0 / sqrt(s);
-            m[i] = t * a * delta[i];
-            m[i + 1] = t * b * delta[i];
+            sp.m[i] = t * a * delta[i];
+            sp.m[i + 1] = t * b * delta[i];
         }
     }
+    return sp;
+}
 
+void CurvEditor::evaluateSplineLUT(const CurveSpline &sp, uchar lut[256]) {
+    const int n = sp.xs.size();
     int seg = 0;
     for (int x = 0; x < 256; ++x) {
-        while (seg < n - 2 && x > xs[seg + 1]) seg++;
-        double h = xs[seg + 1] - xs[seg];
-        if (h < 0.0001) { lut[x] = (uchar)qBound(0.0, ys[seg], 255.0); continue; }
-        double t  = (x - xs[seg]) / h;
+        while (seg < n - 2 && x > sp.xs[seg + 1]) seg++;
+        double h = sp.xs[seg + 1] - sp.xs[seg];
+        if (h < 0.0001) {
+            lut[x] = (uchar)qBound(0.0, sp.ys[seg], 255.0);
+            continue;
+        }
+        double t  = (x - sp.xs[seg]) / h;
         double t2 = t * t, t3 = t2 * t;
         double h00 = 2*t3 - 3*t2 + 1;
         double h10 = t3 - 2*t2 + t;
         double h01 = -2*t3 + 3*t2;
         double h11 = t3 - t2;
-        double y = h00*ys[seg] + h10*h*m[seg] + h01*ys[seg+1] + h11*h*m[seg+1];
+        double y = h00*sp.ys[seg] + h10*h*sp.m[seg] + h01*sp.ys[seg+1] + h11*h*sp.m[seg+1];
         lut[x] = (uchar)qBound(0, (int)(y + 0.5), 255);
     }
+}
+
+void CurvEditor::buildLUT(const QVector<QPointF> &pts, uchar lut[256]) {
+    QVector<QPointF> p = pts;
+    std::sort(p.begin(), p.end(), [](const QPointF &a, const QPointF &b) { return a.x() < b.x(); });
+    if (p.size() < 2) { for (int i = 0; i < 256; ++i) lut[i] = (uchar)i; return; }
+    if (isIdentity(p)) { for (int i = 0; i < 256; ++i) lut[i] = (uchar)i; return; }
+    CurveSpline sp = computeMonotoneSpline(p);
+    evaluateSplineLUT(sp, lut);
 }
 
 QVector<QPointF> CurvEditor::defaultPoints() { return { QPointF(0, 0), QPointF(255, 255) }; }
@@ -254,16 +265,14 @@ int CurvEditor::findPointAt(const QPointF &widgetPos) const {
     return -1;
 }
 
-void CurvEditor::paintEvent(QPaintEvent *) {
+// ------------------------------------------------------------
+// paintEvent dividido en 5 helpers
+// ------------------------------------------------------------
+void CurvEditor::paintBackgroundAndGrid(QPainter &p) {
     const QColor bgCol    = m_dark ? QColor("#1e1e1e") : QColor("#f3f4f6");
     const QColor edgeCol  = m_dark ? QColor("#3a3a3a") : QColor("#d1d5db");
     const QColor gridCol  = m_dark ? QColor("#2e2e2e") : QColor("#e5e7eb");
-    const QColor diagCol  = m_dark ? QColor("#555555") : QColor("#9ca3af");
-    const QColor ptFill   = m_dark ? QColor("#2a2a2a") : QColor("#ffffff");
-    const QColor ptPen    = m_dark ? QColor("#e5e5e5") : QColor("#111827");
 
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing, true);
     p.fillRect(rect(), bgCol);
 
     p.setPen(QPen(edgeCol, 1));
@@ -275,45 +284,52 @@ void CurvEditor::paintEvent(QPaintEvent *) {
         p.drawLine(QPointF(mapX(v), MARGIN), QPointF(mapX(v), height() - MARGIN));
         p.drawLine(QPointF(MARGIN, mapY(v)), QPointF(width() - MARGIN, mapY(v)));
     }
+}
 
-    if (!m_histogram.isEmpty()) {
-        int maxV = 1;
-        for (int v : m_histogram) if (v > maxV) maxV = v;
-        QColor hcol = channelColor();
-        hcol.setAlpha(70);
-        if (m_channel == 0) hcol = m_dark ? QColor(160, 160, 170, 70) : QColor(110, 115, 125, 70);
-        p.setPen(hcol);
-        double logMax = log(1.0 + maxV);
-        for (int x = 0; x < 256; ++x) {
-            double hNorm = log(1.0 + m_histogram[x]) / logMax;
-            int barH = (int)(hNorm * (height() - 2 * MARGIN));
-            int sx = (int)mapX(x);
-            p.drawLine(sx, height() - MARGIN, sx, height() - MARGIN - barH);
-        }
+void CurvEditor::paintHistogram(QPainter &p) {
+    if (m_histogram.isEmpty()) return;
+    int maxV = 1;
+    for (int v : m_histogram) if (v > maxV) maxV = v;
+
+    QColor hcol = channelColor();
+    hcol.setAlpha(70);
+    if (m_channel == 0)
+        hcol = m_dark ? QColor(160, 160, 170, 70) : QColor(110, 115, 125, 70);
+    p.setPen(hcol);
+
+    double logMax = log(1.0 + maxV);
+    for (int x = 0; x < 256; ++x) {
+        double hNorm = log(1.0 + m_histogram[x]) / logMax;
+        int barH = (int)(hNorm * (height() - 2 * MARGIN));
+        int sx = (int)mapX(x);
+        p.drawLine(sx, height() - MARGIN, sx, height() - MARGIN - barH);
     }
+}
 
-    // LÍNEAS FANTASMA: cuando el canal activo es RGB (Todos),
-    // dibujar suavemente las curvas de R/G/B si fueron modificadas
-    if (m_channel == 0) {
-        for (int ch = 1; ch <= 3; ++ch) {
-            if (isIdentity(m_points[ch])) continue;
-            uchar ghostLut[256];
-            buildLUT(m_points[ch], ghostLut);
-            QPainterPath ghostCurve;
-            ghostCurve.moveTo(mapX(0), mapY(ghostLut[0]));
-            for (int x = 1; x < 256; ++x)
-                ghostCurve.lineTo(mapX(x), mapY(ghostLut[x]));
-            QColor ghostColor;
-            if (ch == 1)      ghostColor = QColor(239, 68, 68, 55);
-            else if (ch == 2) ghostColor = QColor(34, 197, 94, 55);
-            else              ghostColor = QColor(59, 130, 246, 55);
-            p.setPen(QPen(ghostColor, 1.5, Qt::SolidLine));
-            p.setBrush(Qt::NoBrush);
-            p.drawPath(ghostCurve);
-        }
+void CurvEditor::paintGhostCurves(QPainter &p) {
+    if (m_channel != 0) return;
+
+    for (int ch = 1; ch <= 3; ++ch) {
+        if (isIdentity(m_points[ch])) continue;
+        uchar ghostLut[256];
+        buildLUT(m_points[ch], ghostLut);
+        QPainterPath ghostCurve;
+        ghostCurve.moveTo(mapX(0), mapY(ghostLut[0]));
+        for (int x = 1; x < 256; ++x)
+            ghostCurve.lineTo(mapX(x), mapY(ghostLut[x]));
+        QColor ghostColor;
+        if (ch == 1)      ghostColor = QColor(239, 68, 68, 55);
+        else if (ch == 2) ghostColor = QColor(34, 197, 94, 55);
+        else              ghostColor = QColor(59, 130, 246, 55);
+        p.setPen(QPen(ghostColor, 1.5, Qt::SolidLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(ghostCurve);
     }
+}
 
-    // Curva principal del canal activo
+void CurvEditor::paintMainCurve(QPainter &p) {
+    const QColor diagCol = m_dark ? QColor("#555555") : QColor("#9ca3af");
+
     uchar lut[256];
     buildLUT(m_points[m_channel], lut);
     QPainterPath curve;
@@ -325,6 +341,11 @@ void CurvEditor::paintEvent(QPaintEvent *) {
 
     p.setPen(QPen(diagCol, 1, Qt::DashLine));
     p.drawLine(QPointF(mapX(0), mapY(0)), QPointF(mapX(255), mapY(255)));
+}
+
+void CurvEditor::paintPoints(QPainter &p) {
+    const QColor ptFill = m_dark ? QColor("#2a2a2a") : QColor("#ffffff");
+    const QColor ptPen  = m_dark ? QColor("#e5e5e5") : QColor("#111827");
 
     const QVector<QPointF> &pts = m_points[m_channel];
     for (int i = 0; i < pts.size(); ++i) {
@@ -336,28 +357,49 @@ void CurvEditor::paintEvent(QPaintEvent *) {
     }
 }
 
+void CurvEditor::paintEvent(QPaintEvent *) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    paintBackgroundAndGrid(p);
+    paintHistogram(p);
+    paintGhostCurves(p);
+    paintMainCurve(p);
+    paintPoints(p);
+}
+
 void CurvEditor::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) {
-        int idx = findPointAt(e->position());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QPointF pos = e->position();
+#else
+        QPointF pos = e->posF();
+#endif
+        int idx = findPointAt(pos);
         if (idx >= 0) {
             m_selected = idx;
             m_dragging = true;
         } else {
-            double x = invX(e->position().x());
-            double y = invY(e->position().y());
+            double x = invX(pos.x());
+            double y = invY(pos.y());
             if (x > 1.0 && x < 254.0) {
                 QVector<QPointF> &pts = m_points[m_channel];
-                int pos = 0;
-                while (pos < pts.size() && pts[pos].x() < x) pos++;
-                pts.insert(pos, QPointF(x, y));
-                m_selected = pos;
+                int p = 0;
+                while (p < pts.size() && pts[p].x() < x) p++;
+                pts.insert(p, QPointF(x, y));
+                m_selected = p;
                 m_dragging = true;
                 emit curveChanged();
             }
         }
         update();
     } else if (e->button() == Qt::RightButton) {
-        int idx = findPointAt(e->position());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QPointF pos = e->position();
+#else
+        QPointF pos = e->posF();
+#endif
+        int idx = findPointAt(pos);
         if (idx > 0 && idx < m_points[m_channel].size() - 1) {
             m_points[m_channel].removeAt(idx);
             notifyChanged();
@@ -369,10 +411,15 @@ void CurvEditor::mouseMoveEvent(QMouseEvent *e) {
     if (!m_dragging || m_selected < 0) return;
     QVector<QPointF> &pts = m_points[m_channel];
     if (m_selected >= pts.size()) return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QPointF pos = e->position();
+#else
+    QPointF pos = e->posF();
+#endif
     double nx = pts[m_selected].x();
-    double ny = invY(e->position().y());
+    double ny = invY(pos.y());
     if (m_selected > 0 && m_selected < pts.size() - 1) {
-        nx = invX(e->position().x());
+        nx = invX(pos.x());
         nx = qBound(pts[m_selected - 1].x() + 1.0, nx, pts[m_selected + 1].x() - 1.0);
     }
     pts[m_selected] = QPointF(nx, ny);
@@ -383,7 +430,12 @@ void CurvEditor::mouseMoveEvent(QMouseEvent *e) {
 void CurvEditor::mouseReleaseEvent(QMouseEvent *) { m_dragging = false; }
 
 void CurvEditor::mouseDoubleClickEvent(QMouseEvent *e) {
-    int idx = findPointAt(e->position());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QPointF pos = e->position();
+#else
+    QPointF pos = e->posF();
+#endif
+    int idx = findPointAt(pos);
     if (idx > 0 && idx < m_points[m_channel].size() - 1) {
         m_points[m_channel].removeAt(idx);
         notifyChanged();
@@ -403,7 +455,6 @@ void CurvEditor::keyPressEvent(QKeyEvent *e) {
 // ============================================================
 // Tema
 // ============================================================
-
 bool ImageFiltersDialog::detectDarkTheme() {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     auto cs = QGuiApplication::styleHints()->colorScheme();
@@ -528,9 +579,8 @@ QLabel* ImageFiltersDialog::makeDescLabel(const QString &text) const {
 }
 
 // ============================================================
-// Iconos circulares (filas compactas)
+// Iconos circulares
 // ============================================================
-
 QIcon ImageFiltersDialog::iconoAjuste(int tipo, bool dark) {
     const int S = 40;
     QPixmap pm(S, S);
@@ -628,9 +678,8 @@ QIcon ImageFiltersDialog::iconoAjuste(int tipo, bool dark) {
 }
 
 // ============================================================
-// Fila compacta: icono circular + nombre + valor + slider
+// Fila compacta
 // ============================================================
-
 QWidget *ImageFiltersDialog::makeCompactRow(const QIcon &ic, const QString &label,
     int min, int max, int initial,
     QSlider **outSlider, std::function<void(int)> onChanged,
@@ -745,7 +794,6 @@ void ImageFiltersDialog::applyGlobalStyleSheet() {
 // ============================================================
 // Constructor
 // ============================================================
-
 ImageFiltersDialog::ImageFiltersDialog(const QImage &img, QWidget *parent, bool floatingMode, int darkMode)
     : QDialog(parent), originalImage(img)
 {
@@ -1136,7 +1184,6 @@ ImageFiltersDialog::ImageFiltersDialog(const QImage &img, QWidget *parent, bool 
 // ============================================================
 // Presets UI
 // ============================================================
-
 QGroupBox *ImageFiltersDialog::makePresetGroup() {
     QGroupBox *box = new QGroupBox(tr("Filtros rápidos (presets)"));
     box->setStyleSheet(groupBoxAccentStyle());
@@ -1630,243 +1677,302 @@ void ImageFiltersDialog::buildColorizeLUT(int lutR[256], int lutG[256], int lutB
 }
 
 // ============================================================
-// Pipeline de filtros
+// Helpers de applyFilterParams (extraídos)
 // ============================================================
+bool ImageFiltersDialog::hasColorAdjustments(const FilterParams &fp) {
+    return fp.brightness != 0 || fp.contrast != 0 || fp.saturation != 0 || fp.exposure != 0 ||
+           fp.shadows != 0 || fp.highlights != 0 || fp.temperature != 0 ||
+           fp.invertColors || fp.grayscale || fp.sepia ||
+           fp.rawTemp != 0 || fp.rawTint != 0 || fp.rawVibrance != 0 || fp.rawClarity != 0 ||
+           fp.rawBlacks != 0 || fp.rawWhites != 0 || fp.rawGamma != 100;
+}
 
+bool ImageFiltersDialog::hasHslAdjustments(const FilterParams &fp) {
+    if (fp.colorizeHSL) return true;
+    for (int i = 0; i < 7; ++i) {
+        if (fp.hsl[i].hue != 0 || fp.hsl[i].saturation != 0 || fp.hsl[i].lightness != 0)
+            return true;
+    }
+    return false;
+}
+
+bool ImageFiltersDialog::hasCurveAdjustments(const FilterParams &fp) {
+    return !CurvEditor::isIdentity(fp.curves[0]) ||
+           !CurvEditor::isIdentity(fp.curves[1]) ||
+           !CurvEditor::isIdentity(fp.curves[2]) ||
+           !CurvEditor::isIdentity(fp.curves[3]);
+}
+
+ImageFiltersDialog::ColorAdjustFactors ImageFiltersDialog::computeColorFactors(const FilterParams &fp) {
+    ColorAdjustFactors f;
+    f.expFactor = pow(2.0, fp.exposure);
+    f.contrastFactor = (fp.contrast != 0)
+        ? (259.0 * (fp.contrast * 255 + 255)) / (255.0 * (259.0 - fp.contrast * 255))
+        : 1.0;
+    f.gammaExp = (fp.rawGamma != 100) ? 1.0 / (fp.rawGamma / 100.0) : 1.0;
+    return f;
+}
+
+QRgb ImageFiltersDialog::applyColorPixel(double r, double g, double b, int a,
+                                         const FilterParams &fp,
+                                         const ColorAdjustFactors &f) {
+    if (fp.exposure != 0) { r *= f.expFactor; g *= f.expFactor; b *= f.expFactor; }
+    if (fp.brightness != 0) { double add = fp.brightness * 255; r += add; g += add; b += add; }
+    if (fp.contrast != 0) {
+        r = f.contrastFactor * (r - 128) + 128;
+        g = f.contrastFactor * (g - 128) + 128;
+        b = f.contrastFactor * (b - 128) + 128;
+    }
+    if (fp.temperature != 0) {
+        if (fp.temperature > 0) { r += fp.temperature * 50; b -= fp.temperature * 50; }
+        else { b += -fp.temperature * 50; r -= -fp.temperature * 50; }
+    }
+    if (fp.rawTemp != 0) { r += fp.rawTemp * 0.8; b -= fp.rawTemp * 0.8; }
+    if (fp.rawTint != 0) { g -= fp.rawTint * 0.6; }
+    if (fp.rawBlacks != 0) {
+        double k = fp.rawBlacks * 0.5;
+        r += k * (1.0 - r / 255.0); g += k * (1.0 - g / 255.0); b += k * (1.0 - b / 255.0);
+    }
+    if (fp.rawWhites != 0) {
+        double k = fp.rawWhites * 0.5;
+        r += k * (r / 255.0); g += k * (g / 255.0); b += k * (b / 255.0);
+    }
+    if (fp.rawGamma != 100) {
+        r = 255.0 * pow(qMax(0.0, r / 255.0), f.gammaExp);
+        g = 255.0 * pow(qMax(0.0, g / 255.0), f.gammaExp);
+        b = 255.0 * pow(qMax(0.0, b / 255.0), f.gammaExp);
+    }
+    if (fp.rawClarity != 0) {
+        double k = 1.0 + fp.rawClarity / 100.0 * 0.8;
+        r = 128.0 + (r - 128.0) * k; g = 128.0 + (g - 128.0) * k; b = 128.0 + (b - 128.0) * k;
+    }
+    if (fp.rawVibrance != 0) {
+        int lum = safeLum(r, g, b);
+        int mx = qMax((int)r, qMax((int)g, (int)b));
+        int mn = qMin((int)r, qMin((int)g, (int)b));
+        double sat = (mx - mn) / 255.0;
+        double boost = fp.rawVibrance / 100.0 * (1.0 - sat);
+        r += (r - lum) * boost; g += (g - lum) * boost; b += (b - lum) * boost;
+    }
+    if (fp.saturation != 0) {
+        int lum = safeLum(r, g, b);
+        r = lum + (r - lum) * (1.0 + fp.saturation);
+        g = lum + (g - lum) * (1.0 + fp.saturation);
+        b = lum + (b - lum) * (1.0 + fp.saturation);
+    }
+    if (fp.shadows != 0) {
+        int lum = safeLum(r, g, b);
+        if (lum < 128) {
+            double k = 1.0 + fp.shadows * (1.0 - lum / 128.0);
+            r = r * k + fp.shadowColor.red()   * fp.shadows * 0.3;
+            g = g * k + fp.shadowColor.green() * fp.shadows * 0.3;
+            b = b * k + fp.shadowColor.blue()  * fp.shadows * 0.3;
+        }
+    }
+    if (fp.highlights != 0) {
+        int lum = safeLum(r, g, b);
+        if (lum > 128) {
+            double k = 1.0 + fp.highlights * (lum / 128.0 - 1.0);
+            r = r * k + fp.highlightColor.red()   * fp.highlights * 0.3;
+            g = g * k + fp.highlightColor.green() * fp.highlights * 0.3;
+            b = b * k + fp.highlightColor.blue()  * fp.highlights * 0.3;
+        }
+    }
+    if (fp.grayscale) { int lum = safeLum(r, g, b); r = g = b = lum; }
+    if (fp.sepia) {
+        double nr = r * 0.393 + g * 0.769 + b * 0.189;
+        double ng = r * 0.349 + g * 0.686 + b * 0.168;
+        double nb = r * 0.272 + g * 0.534 + b * 0.131;
+        r = nr; g = ng; b = nb;
+    }
+    if (fp.invertColors) { r = 255 - r; g = 255 - g; b = 255 - b; }
+    return clampRgba(r, g, b, a);
+}
+
+void ImageFiltersDialog::applyColorPass(QImage &img, const FilterParams &fp,
+                                        const ColorAdjustFactors &f) {
+    const int w = img.width(), h = img.height();
+    for (int y = 0; y < h; ++y) {
+        QRgb *line = (QRgb*)img.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            const QRgb px = line[x];
+            const int a = qAlpha(px);
+            if (a == 0) continue;
+            line[x] = applyColorPixel(qRed(px), qGreen(px), qBlue(px), a, fp, f);
+        }
+    }
+}
+
+void ImageFiltersDialog::applyColorizePass(QImage &img, const FilterParams &fp) {
+    int lutR[256], lutG[256], lutB[256];
+    buildColorizeLUT(lutR, lutG, lutB);
+    const double k = qBound(0.0, fp.colorizeStrength, 1.0);
+    const int w = img.width(), h = img.height();
+    for (int y = 0; y < h; ++y) {
+        QRgb *line = (QRgb*)img.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            const QRgb px = line[x];
+            const int a = qAlpha(px);
+            if (a == 0) continue;
+            const int lum = qGray(qRed(px), qGreen(px), qBlue(px));
+            const double nr = qRed(px)   * (1.0 - k) + lutR[lum] * k;
+            const double ng = qGreen(px) * (1.0 - k) + lutG[lum] * k;
+            const double nb = qBlue(px)  * (1.0 - k) + lutB[lum] * k;
+            line[x] = clampRgba(nr, ng, nb, a);
+        }
+    }
+}
+
+void ImageFiltersDialog::applyHslPass(QImage &img, const FilterParams &fp) {
+    const int w = img.width(), h = img.height();
+    for (int y = 0; y < h; ++y) {
+        QRgb *line = (QRgb*)img.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            const int a = qAlpha(line[x]);
+            if (a == 0) continue;
+            double r = qRed(line[x]), g = qGreen(line[x]), b = qBlue(line[x]);
+            double hh, ss, ll;
+            rgb2hsl(r, g, b, hh, ss, ll);
+            if (fp.colorizeHSL) {
+                hh = fmod(fp.hsl[0].hue + 180.0, 360.0);
+                ss = qBound(0.0, (fp.hsl[0].saturation + 100.0) / 200.0, 1.0);
+            } else {
+                double dH = fp.hsl[0].hue;
+                double fS = fp.hsl[0].saturation / 100.0;
+                double fL = fp.hsl[0].lightness  / 100.0;
+                for (int c = 1; c <= 6; ++c) {
+                    const HSLAdjust &ch = fp.hsl[c];
+                    if (ch.hue == 0 && ch.saturation == 0 && ch.lightness == 0) continue;
+                    double wgt = hslChannelWeight(hh, c);
+                    if (wgt <= 0.001) continue;
+                    dH += wgt * ch.hue;
+                    fS += wgt * ch.saturation / 100.0;
+                    fL += wgt * ch.lightness  / 100.0;
+                }
+                hh += dH;
+                ss  = qBound(0.0, ss * (1.0 + fS), 1.0);
+                ll  = qBound(0.0, ll + fL * 0.5, 1.0);
+            }
+            hsl2rgb(hh, ss, ll, r, g, b);
+            line[x] = clampRgba(r, g, b, a);
+        }
+    }
+}
+
+void ImageFiltersDialog::applyCurvesPass(QImage &img, const FilterParams &fp) {
+    uchar lutM[256], lutR[256], lutG[256], lutB[256];
+    CurvEditor::buildLUT(fp.curves[0], lutM);
+    CurvEditor::buildLUT(fp.curves[1], lutR);
+    CurvEditor::buildLUT(fp.curves[2], lutG);
+    CurvEditor::buildLUT(fp.curves[3], lutB);
+
+    const int w = img.width(), h = img.height();
+    for (int y = 0; y < h; ++y) {
+        QRgb *line = (QRgb*)img.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            const QRgb px = line[x];
+            const int a = qAlpha(px);
+            if (a == 0) continue;
+            const int r = lutR[lutM[qRed(px)]];
+            const int g = lutG[lutM[qGreen(px)]];
+            const int b = lutB[lutM[qBlue(px)]];
+            line[x] = qRgba(r, g, b, a);
+        }
+    }
+}
+
+void ImageFiltersDialog::applySharpenPass(QImage &img, const FilterParams &fp) {
+    const int w = img.width(), h = img.height();
+    if (w < 3 || h < 3) return;
+
+    QImage tmp = img.copy();
+    const double strength = fp.sharpenStrength / 50.0;
+
+    for (int y = 1; y < h - 1; ++y) {
+        const QRgb *lC = (const QRgb*)tmp.constScanLine(y);
+        const QRgb *lT = (const QRgb*)tmp.constScanLine(y - 1);
+        const QRgb *lB = (const QRgb*)tmp.constScanLine(y + 1);
+        QRgb *out = (QRgb*)img.scanLine(y);
+        for (int x = 1; x < w - 1; ++x) {
+            QRgb c = lC[x], t = lT[x], b2 = lB[x], l = lC[x - 1], rr = lC[x + 1];
+            int r = qBound(0, (int)(qRed(c)   * (1 + 4*strength) - (qRed(t)   + qRed(b2)   + qRed(l)   + qRed(rr))   * strength), 255);
+            int g = qBound(0, (int)(qGreen(c) * (1 + 4*strength) - (qGreen(t) + qGreen(b2) + qGreen(l) + qGreen(rr)) * strength), 255);
+            int b = qBound(0, (int)(qBlue(c)  * (1 + 4*strength) - (qBlue(t)  + qBlue(b2)  + qBlue(l)  + qBlue(rr))  * strength), 255);
+            out[x] = qRgba(r, g, b, qAlpha(c));
+        }
+    }
+}
+
+void ImageFiltersDialog::applyVignettePass(QImage &img, const FilterParams &fp,
+                                           const QPoint &subOffset, const QSize &fullSize) {
+    const int w = img.width(), h = img.height();
+    const double fsW = fullSize.isValid() ? fullSize.width()  : w;
+    const double fsH = fullSize.isValid() ? fullSize.height() : h;
+    const double cx = fsW / 2.0 - subOffset.x();
+    const double cy = fsH / 2.0 - subOffset.y();
+    double maxDist = sqrt((fsW/2.0)*(fsW/2.0) + (fsH/2.0)*(fsH/2.0));
+    if (maxDist < 0.001) maxDist = 0.001;
+
+    for (int y = 0; y < h; ++y) {
+        QRgb *line = (QRgb*)img.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            double dist = sqrt((x - cx)*(x - cx) + (y - cy)*(y - cy));
+            double f = qMax(0.0, 1.0 - fp.vignette * (dist / maxDist));
+            QRgb px = line[x];
+            line[x] = qRgba((int)(qRed(px) * f),
+                            (int)(qGreen(px) * f),
+                            (int)(qBlue(px) * f),
+                            qAlpha(px));
+        }
+    }
+}
+
+// ============================================================
+// Pipeline principal (ahora corto, solo orquesta)
+// ============================================================
 void ImageFiltersDialog::applyFilterParams(QImage &img, const FilterParams &fp,
-    const QPoint &subOffset, const QSize &fullSize)
+                                           const QPoint &subOffset, const QSize &fullSize)
 {
     if (img.isNull()) return;
     if (img.format() != QImage::Format_ARGB32 && img.format() != QImage::Format_RGB32)
         img = img.convertToFormat(QImage::Format_ARGB32);
-    int w = img.width(), h = img.height();
 
-    bool doColor =
-        fp.brightness != 0 || fp.contrast != 0 || fp.saturation != 0 || fp.exposure != 0 ||
-        fp.shadows != 0 || fp.highlights != 0 || fp.temperature != 0 ||
-        fp.invertColors || fp.grayscale || fp.sepia ||
-        fp.rawTemp != 0 || fp.rawTint != 0 || fp.rawVibrance != 0 || fp.rawClarity != 0 ||
-        fp.rawBlacks != 0 || fp.rawWhites != 0 || fp.rawGamma != 100;
-
-    if (doColor) {
-        double expFactor = pow(2.0, fp.exposure);
-        double contrastFactor = (fp.contrast != 0)
-            ? (259.0 * (fp.contrast * 255 + 255)) / (255.0 * (259.0 - fp.contrast * 255))
-            : 1.0;
-        double gammaExp = (fp.rawGamma != 100) ? 1.0 / (fp.rawGamma / 100.0) : 1.0;
-
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = (QRgb*)img.scanLine(y);
-            for (int x = 0; x < w; ++x) {
-                QRgb px = line[x];
-                int a = qAlpha(px);
-                if (a == 0) continue;
-                double r = qRed(px), g = qGreen(px), b = qBlue(px);
-
-                if (fp.exposure != 0) { r *= expFactor; g *= expFactor; b *= expFactor; }
-                if (fp.brightness != 0) { double add = fp.brightness * 255; r += add; g += add; b += add; }
-                if (fp.contrast != 0) {
-                    r = contrastFactor * (r - 128) + 128;
-                    g = contrastFactor * (g - 128) + 128;
-                    b = contrastFactor * (b - 128) + 128;
-                }
-                if (fp.temperature != 0) {
-                    if (fp.temperature > 0) { r += fp.temperature * 50; b -= fp.temperature * 50; }
-                    else { b += -fp.temperature * 50; r -= -fp.temperature * 50; }
-                }
-                if (fp.rawTemp != 0) { r += fp.rawTemp * 0.8; b -= fp.rawTemp * 0.8; }
-                if (fp.rawTint != 0) { g -= fp.rawTint * 0.6; }
-                if (fp.rawBlacks != 0) {
-                    double f = fp.rawBlacks * 0.5;
-                    r += f * (1.0 - r / 255.0); g += f * (1.0 - g / 255.0); b += f * (1.0 - b / 255.0);
-                }
-                if (fp.rawWhites != 0) {
-                    double f = fp.rawWhites * 0.5;
-                    r += f * (r / 255.0); g += f * (g / 255.0); b += f * (b / 255.0);
-                }
-                if (fp.rawGamma != 100) {
-                    r = 255.0 * pow(qMax(0.0, r / 255.0), gammaExp);
-                    g = 255.0 * pow(qMax(0.0, g / 255.0), gammaExp);
-                    b = 255.0 * pow(qMax(0.0, b / 255.0), gammaExp);
-                }
-                if (fp.rawClarity != 0) {
-                    double k = 1.0 + fp.rawClarity / 100.0 * 0.8;
-                    r = 128.0 + (r - 128.0) * k; g = 128.0 + (g - 128.0) * k; b = 128.0 + (b - 128.0) * k;
-                }
-                if (fp.rawVibrance != 0) {
-                    int lum = safeLum(r, g, b);
-                    int mx = qMax((int)r, qMax((int)g, (int)b));
-                    int mn = qMin((int)r, qMin((int)g, (int)b));
-                    double sat = (mx - mn) / 255.0;
-                    double boost = fp.rawVibrance / 100.0 * (1.0 - sat);
-                    r += (r - lum) * boost; g += (g - lum) * boost; b += (b - lum) * boost;
-                }
-                if (fp.saturation != 0) {
-                    int lum = safeLum(r, g, b);
-                    r = lum + (r - lum) * (1.0 + fp.saturation);
-                    g = lum + (g - lum) * (1.0 + fp.saturation);
-                    b = lum + (b - lum) * (1.0 + fp.saturation);
-                }
-                if (fp.shadows != 0) {
-                    int lum = safeLum(r, g, b);
-                    if (lum < 128) {
-                        double f = 1.0 + fp.shadows * (1.0 - lum / 128.0);
-                        r = r * f + fp.shadowColor.red()   * fp.shadows * 0.3;
-                        g = g * f + fp.shadowColor.green() * fp.shadows * 0.3;
-                        b = b * f + fp.shadowColor.blue()  * fp.shadows * 0.3;
-                    }
-                }
-                if (fp.highlights != 0) {
-                    int lum = safeLum(r, g, b);
-                    if (lum > 128) {
-                        double f = 1.0 + fp.highlights * (lum / 128.0 - 1.0);
-                        r = r * f + fp.highlightColor.red()   * fp.highlights * 0.3;
-                        g = g * f + fp.highlightColor.green() * fp.highlights * 0.3;
-                        b = b * f + fp.highlightColor.blue()  * fp.highlights * 0.3;
-                    }
-                }
-                if (fp.grayscale) { int lum = safeLum(r, g, b); r = g = b = lum; }
-                if (fp.sepia) {
-                    double nr = r * 0.393 + g * 0.769 + b * 0.189;
-                    double ng = r * 0.349 + g * 0.686 + b * 0.168;
-                    double nb = r * 0.272 + g * 0.534 + b * 0.131;
-                    r = nr; g = ng; b = nb;
-                }
-                if (fp.invertColors) { r = 255 - r; g = 255 - g; b = 255 - b; }
-                line[x] = clampRgba(r, g, b, a);
-            }
-        }
+    if (hasColorAdjustments(fp)) {
+        const ColorAdjustFactors f = computeColorFactors(fp);
+        applyColorPass(img, fp, f);
     }
 
     if (fp.colorize && fp.colorizeStrength > 0.001) {
-        int lutR[256], lutG[256], lutB[256];
-        buildColorizeLUT(lutR, lutG, lutB);
-        double k = qBound(0.0, fp.colorizeStrength, 1.0);
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = (QRgb*)img.scanLine(y);
-            for (int x = 0; x < w; ++x) {
-                QRgb px = line[x];
-                int a = qAlpha(px);
-                if (a == 0) continue;
-                int lum = qGray(qRed(px), qGreen(px), qBlue(px));
-                double nr = qRed(px)   * (1.0 - k) + lutR[lum] * k;
-                double ng = qGreen(px) * (1.0 - k) + lutG[lum] * k;
-                double nb = qBlue(px)  * (1.0 - k) + lutB[lum] * k;
-                line[x] = clampRgba(nr, ng, nb, a);
-            }
-        }
+        applyColorizePass(img, fp);
     }
 
-    bool hslActive = fp.colorizeHSL;
-    for (int i = 0; i < 7 && !hslActive; ++i)
-        if (fp.hsl[i].hue != 0 || fp.hsl[i].saturation != 0 || fp.hsl[i].lightness != 0) hslActive = true;
-
-    if (hslActive) {
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = (QRgb*)img.scanLine(y);
-            for (int x = 0; x < w; ++x) {
-                int a = qAlpha(line[x]);
-                if (a == 0) continue;
-                double r = qRed(line[x]), g = qGreen(line[x]), b = qBlue(line[x]);
-                double hh, ss, ll;
-                rgb2hsl(r, g, b, hh, ss, ll);
-                if (fp.colorizeHSL) {
-                    hh = fmod(fp.hsl[0].hue + 180.0, 360.0);
-                    ss = qBound(0.0, (fp.hsl[0].saturation + 100.0) / 200.0, 1.0);
-                } else {
-                    double dH = fp.hsl[0].hue;
-                    double fS = fp.hsl[0].saturation / 100.0;
-                    double fL = fp.hsl[0].lightness  / 100.0;
-                    for (int c = 1; c <= 6; ++c) {
-                        const HSLAdjust &ch = fp.hsl[c];
-                        if (ch.hue == 0 && ch.saturation == 0 && ch.lightness == 0) continue;
-                        double wgt = hslChannelWeight(hh, c);
-                        if (wgt <= 0.001) continue;
-                        dH += wgt * ch.hue;
-                        fS += wgt * ch.saturation / 100.0;
-                        fL += wgt * ch.lightness  / 100.0;
-                    }
-                    hh += dH;
-                    ss  = qBound(0.0, ss * (1.0 + fS), 1.0);
-                    ll  = qBound(0.0, ll + fL * 0.5, 1.0);
-                }
-                hsl2rgb(hh, ss, ll, r, g, b);
-                line[x] = clampRgba(r, g, b, a);
-            }
-        }
+    if (hasHslAdjustments(fp)) {
+        applyHslPass(img, fp);
     }
 
-    uchar lutM[256], lutR[256], lutG[256], lutB[256];
-    const QVector<QPointF> &pM = fp.curves[0];
-    const QVector<QPointF> &pR = fp.curves[1];
-    const QVector<QPointF> &pG = fp.curves[2];
-    const QVector<QPointF> &pB = fp.curves[3];
-    bool curvesActive = !CurvEditor::isIdentity(pM) || !CurvEditor::isIdentity(pR) ||
-                        !CurvEditor::isIdentity(pG) || !CurvEditor::isIdentity(pB);
-    if (curvesActive) {
-        CurvEditor::buildLUT(pM, lutM);
-        CurvEditor::buildLUT(pR, lutR);
-        CurvEditor::buildLUT(pG, lutG);
-        CurvEditor::buildLUT(pB, lutB);
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = (QRgb*)img.scanLine(y);
-            for (int x = 0; x < w; ++x) {
-                QRgb px = line[x];
-                int a = qAlpha(px);
-                if (a == 0) continue;
-                int r = lutR[lutM[qRed(px)]];
-                int g = lutG[lutM[qGreen(px)]];
-                int b = lutB[lutM[qBlue(px)]];
-                line[x] = qRgba(r, g, b, a);
-            }
-        }
+    if (hasCurveAdjustments(fp)) {
+        applyCurvesPass(img, fp);
     }
 
-    if (fp.pixelate && fp.pixelateSize > 1) pixelateImage(img, fp.pixelateSize, subOffset);
-    if (fp.halftone && fp.halftoneCell > 1) halftoneImage(img, fp.halftoneCell, subOffset);
-    if (fp.blur && fp.blurRadius > 0) boxBlur(img, fp.blurRadius);
+    if (fp.pixelate && fp.pixelateSize > 1)
+        pixelateImage(img, fp.pixelateSize, subOffset);
+    if (fp.halftone && fp.halftoneCell > 1)
+        halftoneImage(img, fp.halftoneCell, subOffset);
+    if (fp.blur && fp.blurRadius > 0)
+        boxBlur(img, fp.blurRadius);
 
     if (fp.sharpen) {
-        QImage tmp = img.copy();
-        double strength = fp.sharpenStrength / 50.0;
-        for (int y = 1; y < h - 1; ++y) {
-            const QRgb *lC = (const QRgb*)tmp.constScanLine(y);
-            const QRgb *lT = (const QRgb*)tmp.constScanLine(y - 1);
-            const QRgb *lB = (const QRgb*)tmp.constScanLine(y + 1);
-            QRgb *out = (QRgb*)img.scanLine(y);
-            for (int x = 1; x < w - 1; ++x) {
-                QRgb c = lC[x], t = lT[x], b2 = lB[x], l = lC[x - 1], rr = lC[x + 1];
-                int r = qBound(0, (int)(qRed(c)   * (1 + 4*strength) - (qRed(t)   + qRed(b2)   + qRed(l)   + qRed(rr))   * strength), 255);
-                int g = qBound(0, (int)(qGreen(c) * (1 + 4*strength) - (qGreen(t) + qGreen(b2) + qGreen(l) + qGreen(rr)) * strength), 255);
-                int b = qBound(0, (int)(qBlue(c)  * (1 + 4*strength) - (qBlue(t)  + qBlue(b2)  + qBlue(l)  + qBlue(rr))  * strength), 255);
-                out[x] = qRgba(r, g, b, qAlpha(c));
-            }
-        }
+        applySharpenPass(img, fp);
     }
 
     if (fp.vignette > 0) {
-        double fsW = fullSize.isValid() ? fullSize.width()  : img.width();
-        double fsH = fullSize.isValid() ? fullSize.height() : img.height();
-        double cx = fsW / 2.0 - subOffset.x();
-        double cy = fsH / 2.0 - subOffset.y();
-        double maxDist = sqrt((fsW/2.0)*(fsW/2.0) + (fsH/2.0)*(fsH/2.0));
-        if (maxDist < 0.001) maxDist = 0.001;
-        for (int y = 0; y < h; ++y) {
-            QRgb *line = (QRgb*)img.scanLine(y);
-            for (int x = 0; x < w; ++x) {
-                double dist = sqrt((x - cx)*(x - cx) + (y - cy)*(y - cy));
-                double f = qMax(0.0, 1.0 - fp.vignette * (dist / maxDist));
-                QRgb px = line[x];
-                line[x] = qRgba((int)(qRed(px) * f), (int)(qGreen(px) * f), (int)(qBlue(px) * f), qAlpha(px));
-            }
-        }
+        applyVignettePass(img, fp, subOffset, fullSize);
     }
 }
 
 // ============================================================
 // Helpers de UI varios
 // ============================================================
-
 QGroupBox *ImageFiltersDialog::makeSliderGroup(const QString &title, const QString &desc,
     int min, int max, int initial, QSlider **outSlider, std::function<void(int)> onChanged)
 {
