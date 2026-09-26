@@ -84,7 +84,6 @@ struct WandNodeCmp {
 // MagicWandTools
 class MagicWandTools {
 public:
-
     static MagicWandResult applyMagicWand(const QImage &image, const QPoint &pos,
                                           int tolerance = 32,
                                           bool contiguous = true,
