@@ -5,10 +5,7 @@
 
 #include <memory>
 
-// ============================================================
-// EXIF helpers — parsing modular
-// ============================================================
-
+/// EXIF helpers — parsing modular
 namespace {
 
 constexpr int kExifTagOrientation  = 0x0112;
@@ -75,15 +72,14 @@ int parseExifSegment(const uchar *seg, int segData) {
 
 } // namespace
 
-// ----------------------------------------
-// ExifTiffReader
-// ----------------------------------------
+/// ExifTiffReader::rd16 — lectura con endianness
 int PaintArea::ExifTiffReader::rd16(int off) const {
     if (off < 0 || off + 1 >= tiffLen) return 0;
     return little ? (tiff[off] | (tiff[off + 1] << 8))
                   : ((tiff[off] << 8) | tiff[off + 1]);
 }
 
+/// ExifTiffReader::rd32 — lectura con endianness
 int PaintArea::ExifTiffReader::rd32(int off) const {
     if (off < 0 || off + 3 >= tiffLen) return 0;
     return little
@@ -91,9 +87,7 @@ int PaintArea::ExifTiffReader::rd32(int off) const {
         : ((tiff[off] << 24) | (tiff[off+1] << 16) | (tiff[off+2] << 8) | tiff[off+3]);
 }
 
-// ----------------------------------------
-// Función pública principal
-// ----------------------------------------
+/// leerOrientacionExif — recorre el JPEG buscando el segmento APP1/Exif
 int leerOrientacionExif(const QString &filePath) {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) return 1;
@@ -123,6 +117,7 @@ int leerOrientacionExif(const QString &filePath) {
     return 1;
 }
 
+/// aplicaOrientacionExif — rota/espeja la imagen según el tag EXIF
 QImage aplicaOrientacionExif(const QImage &img, int orientation) {
     switch (orientation) {
         case 2: return img.mirrored(true, false);
@@ -136,6 +131,7 @@ QImage aplicaOrientacionExif(const QImage &img, int orientation) {
     }
 }
 
+/// cargarImagenRespetandoExif — cargar + aplicar orientación EXIF
 QImage cargarImagenRespetandoExif(const QString &filePath) {
     QImage img(filePath);
     if (img.isNull()) return img;
@@ -144,17 +140,24 @@ QImage cargarImagenRespetandoExif(const QString &filePath) {
     return img;
 }
 
-/// ========== FrameThumbnail ==========
+/// FrameThumbnail — constructor
 FrameThumbnail::FrameThumbnail(const QImage &img, int index, QWidget *parent)
     : QFrame(parent), frameImage(img), frameIndex(index), isSelected(false) {
     setFixedSize(THUMB_SIZE + 8, THUMB_SIZE + 20);
     setCursor(Qt::PointingHandCursor);
     setToolTip(tr("Frame %1").arg(index + 1));
 }
+
+/// FrameThumbnail — setSelected
 void FrameThumbnail::setSelected(bool selected) { isSelected = selected; update(); }
+
+/// FrameThumbnail — setFrameImage
 void FrameThumbnail::setFrameImage(const QImage &img) { frameImage = img; update(); }
+
+/// FrameThumbnail — getFrameIndex
 int FrameThumbnail::getFrameIndex() const { return frameIndex; }
 
+/// FrameThumbnail — paintEvent
 void FrameThumbnail::paintEvent(QPaintEvent *) {
     QPainter painter(this); painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.fillRect(rect(), isSelected ? QColor("#1a4a7c") : QColor("#2b2b2b"));
@@ -173,18 +176,24 @@ void FrameThumbnail::paintEvent(QPaintEvent *) {
     painter.setFont(QFont("Adwaita Sans", 8));
     painter.drawText(QRect(0, THUMB_SIZE + 6, width(), 14), Qt::AlignCenter, QString::number(frameIndex + 1));
 }
+
+/// FrameThumbnail — mousePressEvent
 void FrameThumbnail::mousePressEvent(QMouseEvent *) { emit clicked(frameIndex); }
 
-/// ========== PaintArea: helpers ==========
+/// selBlue — color de selección según tema
 QColor PaintArea::selBlue() const { return darkModeActive ? QColor("#60a5fa") : QColor("#2563eb"); }
+
+/// selBlueLight — variante clara según tema
 QColor PaintArea::selBlueLight() const { return darkModeActive ? QColor("#93c5fd") : QColor("#3b82f6"); }
 
+/// colorVectorActivo — color según la herramienta de lazo
 QColor PaintArea::colorVectorActivo() const {
     if (currentTool == ToolLassoDelete)  return QColor(236, 72, 153);
     if (currentTool == ToolLassoExtract) return QColor(59, 130, 246);
     return QColor(16, 185, 129);
 }
 
+/// activePreset — devuelve el preset del pincel activo
 const BrushSettings& PaintArea::activePreset() const {
     if (ArtisticPresets::isArtisticTool(currentTool)) return classicToolPreset;
     if (currentTool == ToolCustomBrush) return customBrushPresets[activeCustomBrushIndex];
@@ -192,6 +201,7 @@ const BrushSettings& PaintArea::activePreset() const {
     return empty;
 }
 
+/// activeStamp — devuelve el stamp cacheado del pincel activo
 const QImage& PaintArea::activeStamp() const {
     if (ArtisticPresets::isArtisticTool(currentTool)) {
         return (activeMouseButton == Qt::RightButton) ? classicToolStampRight : classicToolStamp;
@@ -203,12 +213,14 @@ const QImage& PaintArea::activeStamp() const {
     return empty;
 }
 
+/// refreshAndNotify — recomponer + emitir + repintar
 void PaintArea::refreshAndNotify(bool recompose) {
     if (recompose) recomponerImagen();
     emit layersChanged();
     update();
 }
 
+/// bakeAllPending — hornea selección, bezier, texto, objetos y vector
 void PaintArea::bakeAllPending() {
     bakeSelection();
     bakeActivePath();
@@ -217,11 +229,13 @@ void PaintArea::bakeAllPending() {
     cancelVectorMode();
 }
 
+/// beginEdit — bake pendientes + guardar historial
 void PaintArea::beginEdit() {
     bakeAllPending();
     saveHistoryState();
 }
 
+/// retouchToolCode — mapea ToolType al código que usa RetouchTools
 static int retouchToolCode(ToolType t) {
     switch (t) {
         case ToolBlur:        return 201;
@@ -231,6 +245,7 @@ static int retouchToolCode(ToolType t) {
     }
 }
 
+/// configureMaskEditController — enlaza el MaskEditController con PaintArea
 void PaintArea::configureMaskEditController() {
     MaskEditController::Context ctx;
     ctx.maskRef = [this]() -> QImage& {
@@ -265,6 +280,7 @@ void PaintArea::configureMaskEditController() {
     m_maskEdit.onStatusMessage = [this](const QString &msg) { emit statusBarMessage(msg); };
 }
 
+/// margenHerramienta — margen de invalidación según la herramienta
 int PaintArea::margenHerramienta() const {
     int sw = qMax(1, static_cast<int>(penWidth * mouseSensitivity));
     if (usaStampDePincel()) {
@@ -283,6 +299,7 @@ int PaintArea::margenHerramienta() const {
     }
 }
 
+/// rectCanvasAWidget — convierte un rect de canvas a coords de widget
 QRect PaintArea::rectCanvasAWidget(const QRect &r) const {
     if (r.isEmpty()) return QRect();
     int x1 = (int)floor(r.left() * zoomFactor);
@@ -292,17 +309,20 @@ QRect PaintArea::rectCanvasAWidget(const QRect &r) const {
     return QRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1);
 }
 
+/// repintarZonaCanvas — invalida una zona en coords de canvas
 void PaintArea::repintarZonaCanvas(const QRect &canvasRect) {
     QRect c = canvasRect.intersected(stack.canvasRect());
     if (c.isEmpty()) return;
     update(rectCanvasAWidget(c).adjusted(-3, -3, 3, 3));
 }
 
+/// rectSiluetaWidget — rect del widget donde pintar la silueta del pincel
 QRect PaintArea::rectSiluetaWidget(const QPoint &widgetPos) const {
     int m = (int)(margenHerramienta() * zoomFactor) + 10;
     return QRect(widgetPos.x() - m, widgetPos.y() - m, m * 2 + 1, m * 2 + 1);
 }
 
+/// invalidarTrazo — invalida zona de canvas y widget entre dos puntos
 void PaintArea::invalidarTrazo(const QPoint &a, const QPoint &b, const QRect &extraCanvas) {
     int m = margenHerramienta();
     QRect r = QRect(a, b).normalized().adjusted(-m, -m, m, m);
@@ -316,6 +336,7 @@ void PaintArea::invalidarTrazo(const QPoint &a, const QPoint &b, const QRect &ex
     if (!wr.isEmpty()) update(wr.adjusted(-2, -2, 2, 2));
 }
 
+/// invalidarPreviewClone — invalida la zona de preview del clonado
 void PaintArea::invalidarPreviewClone(const QPoint &cursorPos) {
     if (!cloneSourceSet) return;
     int brushSize = qMax(1, static_cast<int>(penWidth * mouseSensitivity)) * 2;
@@ -332,6 +353,7 @@ void PaintArea::invalidarPreviewClone(const QPoint &cursorPos) {
     }
 }
 
+/// renderTiles — dibuja los tiles visibles
 void PaintArea::renderTiles(QPainter &painter, const QRect &visibleWidgetRect) {
     if (!stack.tilesValid()) return;
     QRect canvasVisible(
@@ -359,6 +381,7 @@ void PaintArea::renderTiles(QPainter &painter, const QRect &visibleWidgetRect) {
     }
 }
 
+/// sincronizarCapasConFrameActual — copia el frame actual al stack de capas
 void PaintArea::sincronizarCapasConFrameActual() {
     if (!pixelOptions.getIsPixelArtMode()) return;
     QImage frameImg = animManager.getCurrentFrameImage();
@@ -370,11 +393,13 @@ void PaintArea::sincronizarCapasConFrameActual() {
     update();
 }
 
+/// guardarFrameActualEnAnimador — guarda la composición actual en el frame
 void PaintArea::guardarFrameActualEnAnimador() {
     if (!pixelOptions.getIsPixelArtMode()) return;
     animManager.setCurrentFrameImage(stack.compositedImage());
 }
 
+/// procesarDibujoContinuo — timer para pinceles airbrush/scattered
 void PaintArea::procesarDibujoContinuo() {
     if (!drawing || !capaValida() || stack.currentLocked()) return;
     if (stack.isEditingMask()) return;
@@ -393,12 +418,14 @@ void PaintArea::procesarDibujoContinuo() {
     invalidarTrazo(currentMousePos, currentMousePos);
 }
 
+/// obtenerColorDeTrabajo — color según botón y target activo
 QColor PaintArea::obtenerColorDeTrabajo(Qt::MouseButton button) {
     if (currentTool == ToolEraser) return Qt::transparent;
     if (activeColorTarget == 2) return (button == Qt::LeftButton) ? penColor2 : penColor1;
     return (button == Qt::LeftButton) ? penColor1 : penColor2;
 }
 
+/// applyClonStamp — copia un círculo del buffer de clonado al destino
 void PaintArea::applyClonStamp(QImage &target, const QPoint &destPos) {
     if (!cloneSourceSet || cloneBuffer.isNull()) return;
     QPoint offset = cloneSource - cloneInitialDest;
@@ -419,6 +446,7 @@ void PaintArea::applyClonStamp(QImage &target, const QPoint &destPos) {
     }
 }
 
+/// aplicarGradienteConfigurado — aplica el gradiente con la config actual
 void PaintArea::aplicarGradienteConfigurado(const QPoint &p1, const QPoint &p2) {
     if (!puedeEditarCapaActual()) return;
     GradientTools::applyGradient(
@@ -429,6 +457,7 @@ void PaintArea::aplicarGradienteConfigurado(const QPoint &p1, const QPoint &p2) 
         gradientBlendMode);
 }
 
+/// openGradientSettings — abre el diálogo de configuración del gradiente
 void PaintArea::openGradientSettings() {
     GradientDialog dlg(darkModeActive, penColor1, penColor2,
                        (int)gradientType, gradientOpacity, gradientAngle,
@@ -451,6 +480,7 @@ void PaintArea::openGradientSettings() {
     }
 }
 
+/// bakeObjectIntoLayer — hornea un objeto en su capa
 void PaintArea::bakeObjectIntoLayer(int idx) {
     if (idx < 0 || idx >= selMgr.objectCount()) return;
     const PaintObject &obj = selMgr.objectAt(idx);
@@ -460,6 +490,7 @@ void PaintArea::bakeObjectIntoLayer(int idx) {
     selMgr.bakeObjectInto(idx, stack.layerAt(layerIdx).image, !pixelOptions.getIsPixelArtMode());
 }
 
+/// bakeAllObjects — hornea todos los objetos en sus capas
 void PaintArea::bakeAllObjects() {
     if (!selMgr.hasObjects()) return;
     for (int i = 0; i < selMgr.objectCount(); ++i) bakeObjectIntoLayer(i);
@@ -467,6 +498,7 @@ void PaintArea::bakeAllObjects() {
     recomponerImagen();
 }
 
+/// convertSelectionToObject — convierte la selección en objeto
 void PaintArea::convertSelectionToObject() {
     if (!selMgr.isActive() || !selMgr.hasBuffer()) { emit statusBarMessage(tr("Sin selección")); return; }
     if (!capaValida()) return;
@@ -478,6 +510,7 @@ void PaintArea::convertSelectionToObject() {
     refreshAndNotify();
 }
 
+/// integrateSelectedObjects — hornea los objetos seleccionados en sus capas
 void PaintArea::integrateSelectedObjects() {
     QList<int> selected = selMgr.selectedObjectIndices();
     if (selected.isEmpty()) {
@@ -499,6 +532,7 @@ void PaintArea::integrateSelectedObjects() {
     refreshAndNotify();
 }
 
+/// loadTextObjectForEditing — carga un objeto texto en el editor
 void PaintArea::loadTextObjectForEditing(int idx) {
     if (idx < 0 || idx >= selMgr.objectCount()) return;
     if (selMgr.objectAt(idx).type != ObjectType::Text) return;
@@ -509,6 +543,7 @@ void PaintArea::loadTextObjectForEditing(int idx) {
     update();
 }
 
+/// loadShapeObjectForEditing — abre el diálogo de edición de figura
 void PaintArea::loadShapeObjectForEditing(int idx) {
     if (idx < 0 || idx >= selMgr.objectCount()) return;
     if (selMgr.objectAt(idx).type != ObjectType::Shape) return;
@@ -531,10 +566,16 @@ void PaintArea::loadShapeObjectForEditing(int idx) {
     }
 }
 
+/// getRightHandle — rect del handle derecho del canvas
 QRect PaintArea::getRightHandle() const { return QRect(stack.width() * zoomFactor, stack.height() * zoomFactor / 2 - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE); }
+
+/// getBottomHandle — rect del handle inferior del canvas
 QRect PaintArea::getBottomHandle() const { return QRect(stack.width() * zoomFactor / 2 - HANDLE_SIZE/2, stack.height() * zoomFactor, HANDLE_SIZE, HANDLE_SIZE); }
+
+/// getBottomRightHandle — rect del handle inferior-derecho del canvas
 QRect PaintArea::getBottomRightHandle() const { return QRect(stack.width() * zoomFactor, stack.height() * zoomFactor, HANDLE_SIZE, HANDLE_SIZE); }
 
+/// findVectorPointAt — índice del punto vectorial más cercano
 int PaintArea::findVectorPointAt(const QPointF &canvasPos) const {
     double threshold = 8.0 / zoomFactor;
     for (int i = 0; i < vectorPoints.size(); ++i) {
@@ -545,6 +586,7 @@ int PaintArea::findVectorPointAt(const QPointF &canvasPos) const {
     return -1;
 }
 
+/// isNearFirstPoint — true si el cursor está cerca del primer punto vectorial
 bool PaintArea::isNearFirstPoint(const QPointF &canvasPos) const {
     if (vectorPoints.size() < 3) return false;
     double threshold = 12.0 / zoomFactor;
@@ -553,6 +595,7 @@ bool PaintArea::isNearFirstPoint(const QPointF &canvasPos) const {
     return sqrt(dx*dx + dy*dy) <= threshold;
 }
 
+/// finalizeVectorPath — cierra y aplica el path vectorial actual
 void PaintArea::finalizeVectorPath() {
     if (vectorPoints.size() < 3) { vectorPoints.clear(); vectorEditMode = false; update(); return; }
     QPainterPath path;
@@ -583,12 +626,14 @@ void PaintArea::finalizeVectorPath() {
     update();
 }
 
+/// cancelVectorMode — cancela el modo vectorial
 void PaintArea::cancelVectorMode() {
     vectorPoints.clear(); vectorEditMode = false;
     selectedVectorPoint = -1; draggingVectorPoint = false;
     update();
 }
 
+/// updateClassicToolStamp — regenera el stamp del pincel artístico
 void PaintArea::updateClassicToolStamp() {
     QColor leftBase  = obtenerColorDeTrabajo(Qt::LeftButton);
     QColor rightBase = obtenerColorDeTrabajo(Qt::RightButton);
@@ -598,6 +643,7 @@ void PaintArea::updateClassicToolStamp() {
     classicToolStampRight = PaintEngine::generateBrushStamp(classicToolPreset, rightBase, penOpacity, pixelOptions.getIsPixelArtMode(), secondR);
 }
 
+/// PaintArea — constructor
 PaintArea::PaintArea(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StaticContents);
     setMouseTracking(true);
@@ -630,16 +676,22 @@ PaintArea::PaintArea(QWidget *parent) : QWidget(parent) {
     updateCustomBrushStamp();
 }
 
+/// setActiveColorTarget — cambia el target de color activo
 void PaintArea::setActiveColorTarget(int target) {
     activeColorTarget = target;
     if (usaStampDePincel()) updateClassicToolStamp();
 }
+
+/// setMouseSensitivity — ajusta la sensibilidad del ratón
 void PaintArea::setMouseSensitivity(double sens) {
     mouseSensitivity = sens;
     m_maskEdit.setMouseSensitivity(sens);
 }
+
+/// getMouseSensitivity — devuelve la sensibilidad actual
 double PaintArea::getMouseSensitivity() const { return mouseSensitivity; }
 
+/// bakeActivePath — hornea el path Bezier activo en la capa
 void PaintArea::bakeActivePath() {
     if (bezierTool.isEmpty()) return;
     if (!capaValida()) { bezierTool.reset(); return; }
@@ -663,6 +715,7 @@ void PaintArea::bakeActivePath() {
     update();
 }
 
+/// updateCustomBrushStamp — regenera el stamp del pincel personalizado
 void PaintArea::updateCustomBrushStamp() {
     const BrushSettings &config = customBrushPresets[activeCustomBrushIndex];
     QColor leftBase  = obtenerColorDeTrabajo(Qt::LeftButton);
@@ -673,20 +726,35 @@ void PaintArea::updateCustomBrushStamp() {
     customBrushStampRight = PaintEngine::generateBrushStamp(config, rightBase, penOpacity, pixelOptions.getIsPixelArtMode(), secondR);
 }
 
+/// setCustomBrushPresets — establece ambos presets personalizados
 void PaintArea::setCustomBrushPresets(BrushSettings p1, BrushSettings p2, int activeIndex) {
     customBrushPresets[0] = p1; customBrushPresets[1] = p2;
     activeCustomBrushIndex = activeIndex;
     updateCustomBrushStamp();
 }
+
+/// getCustomBrush — devuelve el preset personalizado en el índice
 BrushSettings PaintArea::getCustomBrush(int index) const { return customBrushPresets[index]; }
+
+/// getActiveCustomBrushIndex — índice del preset personalizado activo
 int PaintArea::getActiveCustomBrushIndex() const { return activeCustomBrushIndex; }
 
+/// hasLayerMask — true si la capa tiene máscara B/N
 bool PaintArea::hasLayerMask(int layerIndex) const { return stack.hasMask(layerIndex); }
+
+/// isLayerMaskEnabled — true si la máscara B/N está activa
 bool PaintArea::isLayerMaskEnabled(int layerIndex) const { return stack.isMaskEnabled(layerIndex); }
+
+/// getMaskEditLayer — índice de la capa cuya máscara se está editando
 int PaintArea::getMaskEditLayer() const { return stack.maskEditLayer(); }
+
+/// isEditingMask — true si se está editando una máscara
 bool PaintArea::isEditingMask() const { return stack.isEditingMask(); }
+
+/// getMaskPreview — preview de la máscara de la capa
 QImage PaintArea::getMaskPreview(int layerIndex) const { return stack.getMaskPreview(layerIndex); }
 
+/// addLayerMask — añade una máscara B/N a la capa
 void PaintArea::addLayerMask(int layerIndex) {
     if (!stack.validIndex(layerIndex)) return;
     stack.addMask(layerIndex, stack.layerAt(layerIndex).image.size());
@@ -694,6 +762,7 @@ void PaintArea::addLayerMask(int layerIndex) {
     refreshAndNotify();
 }
 
+/// removeLayerMask — elimina la máscara B/N de la capa
 void PaintArea::removeLayerMask(int layerIndex) {
     if (!stack.hasMask(layerIndex)) return;
     stack.removeMask(layerIndex);
@@ -702,6 +771,7 @@ void PaintArea::removeLayerMask(int layerIndex) {
     refreshAndNotify();
 }
 
+/// toggleLayerMaskEnabled — activa/desactiva la máscara B/N
 void PaintArea::toggleLayerMaskEnabled(int layerIndex) {
     if (!stack.hasMask(layerIndex)) return;
     bool enabled = stack.toggleMaskEnabled(layerIndex);
@@ -709,6 +779,7 @@ void PaintArea::toggleLayerMaskEnabled(int layerIndex) {
     refreshAndNotify();
 }
 
+/// selectMaskForEditing — activa la edición de la máscara
 void PaintArea::selectMaskForEditing(int layerIndex) {
     if (!stack.hasMask(layerIndex)) return;
     stack.setEditLayer(layerIndex);
@@ -717,6 +788,7 @@ void PaintArea::selectMaskForEditing(int layerIndex) {
     update();
 }
 
+/// selectLayerContentForEditing — sale del modo edición de máscara
 void PaintArea::selectLayerContentForEditing() {
     if (stack.maskEditLayer() < 0) return;
     stack.exitMaskEdit();
@@ -725,6 +797,7 @@ void PaintArea::selectLayerContentForEditing() {
     update();
 }
 
+/// applyMaskToLayer — aplica la máscara y la elimina
 void PaintArea::applyMaskToLayer(int layerIndex) {
     if (!stack.hasMask(layerIndex)) return;
     if (!stack.validIndex(layerIndex)) return;
@@ -734,6 +807,7 @@ void PaintArea::applyMaskToLayer(int layerIndex) {
     refreshAndNotify();
 }
 
+/// invertLayerMask — invierte la máscara B/N
 void PaintArea::invertLayerMask(int layerIndex) {
     if (!stack.hasMask(layerIndex)) return;
     stack.invertMask(layerIndex);
@@ -741,14 +815,22 @@ void PaintArea::invertLayerMask(int layerIndex) {
     refreshAndNotify();
 }
 
+/// hasLayerColorMask — true si la capa tiene máscara de color
 bool PaintArea::hasLayerColorMask(int layerIndex) const { return stack.hasColorMask(layerIndex); }
+
+/// isLayerColorMaskEnabled — true si la máscara de color está activa
 bool PaintArea::isLayerColorMaskEnabled(int layerIndex) const { return stack.isColorMaskEnabled(layerIndex); }
+
+/// getLayerColorMaskParams — parámetros del filtro de la máscara de color
 FilterParams PaintArea::getLayerColorMaskParams(int layerIndex) const { return stack.colorMaskParams(layerIndex); }
+
+/// getColorMaskPreview — preview de la máscara de color
 QImage PaintArea::getColorMaskPreview(int layerIndex) const {
     if (!stack.validIndex(layerIndex)) return QImage();
     return stack.getColorMaskPreview(layerIndex, stack.layerAt(layerIndex).image);
 }
 
+/// addLayerColorMask — añade una máscara de color con filtros
 void PaintArea::addLayerColorMask(int layerIndex, const FilterParams &fp) {
     if (!stack.validIndex(layerIndex)) return;
     saveHistoryState();
@@ -757,6 +839,7 @@ void PaintArea::addLayerColorMask(int layerIndex, const FilterParams &fp) {
     refreshAndNotify();
 }
 
+/// removeLayerColorMask — elimina la máscara de color
 void PaintArea::removeLayerColorMask(int layerIndex) {
     if (!stack.hasColorMask(layerIndex)) return;
     saveHistoryState();
@@ -765,6 +848,7 @@ void PaintArea::removeLayerColorMask(int layerIndex) {
     refreshAndNotify();
 }
 
+/// toggleLayerColorMaskEnabled — activa/desactiva la máscara de color
 void PaintArea::toggleLayerColorMaskEnabled(int layerIndex) {
     if (!stack.hasColorMask(layerIndex)) return;
     bool enabled = stack.toggleColorMaskEnabled(layerIndex);
@@ -772,24 +856,28 @@ void PaintArea::toggleLayerColorMaskEnabled(int layerIndex) {
     refreshAndNotify();
 }
 
+/// setLiveColorMaskPreview — preview en vivo del filtro
 void PaintArea::setLiveColorMaskPreview(int layerIndex, const FilterParams &fp) {
     if (!stack.validIndex(layerIndex)) return;
     stack.setLiveColorMaskPreview(layerIndex, fp);
     refreshAndNotify();
 }
 
+/// clearLiveColorMaskPreview — limpia el preview en vivo del filtro
 void PaintArea::clearLiveColorMaskPreview(int layerIndex) {
     if (!stack.hasLiveColorMaskPreview(layerIndex)) return;
     stack.clearLiveColorMaskPreview(layerIndex);
     refreshAndNotify();
 }
 
+/// addLayer — añade una capa vacía
 void PaintArea::addLayer() {
     if (stack.isEmpty()) return;
     stack.addLayer(tr("Capa %1").arg(stack.count() + 1));
     refreshAndNotify(false);
 }
 
+/// addImageLayer — añade una capa nueva con la imagen
 void PaintArea::addImageLayer(const QImage& img) {
     beginEdit();
     if (stack.isEmpty()) return;
@@ -797,6 +885,7 @@ void PaintArea::addImageLayer(const QImage& img) {
     refreshAndNotify(false);
 }
 
+/// insertImageAsObject — inserta la imagen como objeto editable
 void PaintArea::insertImageAsObject(const QImage &img) {
     if (img.isNull()) return;
     bakeSelection(); bakeTextFrame(); bakeActivePath(); saveHistoryState();
@@ -816,45 +905,72 @@ void PaintArea::insertImageAsObject(const QImage &img) {
     refreshAndNotify();
 }
 
+/// duplicateLayer — duplica la capa actual
 void PaintArea::duplicateLayer() { if (!stack.duplicateCurrent()) return; refreshAndNotify(false); }
+
+/// deleteLayer — elimina la capa actual
 void PaintArea::deleteLayer()    { if (!stack.deleteCurrent())    return; refreshAndNotify(false); }
+
+/// mergeDown — fusiona la capa actual con la inferior
 void PaintArea::mergeDown()      { if (!stack.mergeDown())        return; refreshAndNotify(false); }
+
+/// moveLayerUp — mueve la capa actual hacia arriba
 void PaintArea::moveLayerUp()    { if (!stack.moveCurrentUp())    return; refreshAndNotify(false); }
+
+/// moveLayerDown — mueve la capa actual hacia abajo
 void PaintArea::moveLayerDown()  { if (!stack.moveCurrentDown())  return; refreshAndNotify(false); }
+
+/// reorderLayer — reordena las capas
 void PaintArea::reorderLayer(int fromIndex, int toIndex) {
     if (!stack.reorder(fromIndex, toIndex)) return;
     refreshAndNotify(false);
 }
+
+/// setCurrentLayer — establece la capa activa
 void PaintArea::setCurrentLayer(int index) {
     if (!stack.validIndex(index)) return;
     stack.setCurrentIndex(index);
     refreshAndNotify(false);
 }
+
+/// setLayerVisibility — cambia la visibilidad de la capa
 void PaintArea::setLayerVisibility(int index, bool visible) {
     if (!stack.validIndex(index)) return;
     stack.setVisibility(index, visible);
     refreshAndNotify(false);
 }
+
+/// setLayerOpacity — cambia la opacidad de la capa
 void PaintArea::setLayerOpacity(int index, double opacity) {
     if (!stack.validIndex(index)) return;
     stack.setLayerOpacity(index, opacity);
     refreshAndNotify(false);
 }
+
+/// setLayerBlendMode — cambia el modo de fusión de la capa
 void PaintArea::setLayerBlendMode(int index, int mode) {
     if (!stack.validIndex(index)) return;
     stack.setBlendMode(index, mode);
     refreshAndNotify(false);
 }
+
+/// setLayerLocked — bloquea/desbloquea la capa
 void PaintArea::setLayerLocked(int index, bool locked) {
     if (!stack.validIndex(index)) return;
     stack.setLocked(index, locked);
     emit layersChanged();
 }
 
+/// getLayers — devuelve la lista de capas
 const QList<Layer>& PaintArea::getLayers() const { return stack.layers(); }
+
+/// getCurrentLayerIndex — índice de la capa activa
 int PaintArea::getCurrentLayerIndex() const { return stack.currentIndex(); }
+
+/// getImage — composición actual del stack
 QImage PaintArea::getImage() { return stack.compositedImage(); }
 
+/// applyImageFilters — reemplaza la capa actual con la imagen filtrada
 void PaintArea::applyImageFilters(const QImage &filteredImage) {
     if (!puedeEditarCapaActual()) {
         if (capaValida()) emit statusBarMessage(tr("Capa bloqueada"));
@@ -865,6 +981,7 @@ void PaintArea::applyImageFilters(const QImage &filteredImage) {
     refreshAndNotify();
 }
 
+/// flipCurrentLayer — voltea la capa actual
 void PaintArea::flipCurrentLayer(bool horizontal, bool vertical) {
     if (!puedeEditarCapaActual()) return;
     saveHistoryState();
@@ -872,6 +989,7 @@ void PaintArea::flipCurrentLayer(bool horizontal, bool vertical) {
     refreshAndNotify(false);
 }
 
+/// rotateCurrentLayer — rota la capa actual
 void PaintArea::rotateCurrentLayer(int angle) {
     if (!puedeEditarCapaActual()) return;
     saveHistoryState();
@@ -879,6 +997,7 @@ void PaintArea::rotateCurrentLayer(int angle) {
     refreshAndNotify(false);
 }
 
+/// magicWandSelect — selección por similitud de color
 void PaintArea::magicWandSelect(const QPoint &pos, int tolerance) {
     if (!puedeEditarCapaActual()) {
         if (capaValida()) emit statusBarMessage(tr("Capa bloqueada"));
@@ -899,6 +1018,7 @@ void PaintArea::magicWandSelect(const QPoint &pos, int tolerance) {
     refreshAndNotify();
 }
 
+/// setPixelArtMode — activa/desactiva el modo Pixel Art
 void PaintArea::setPixelArtMode(bool active, int resolution) {
     pixelOptions.setPixelArtMode(active, resolution);
     clearHistory();
@@ -925,10 +1045,16 @@ void PaintArea::setPixelArtMode(bool active, int resolution) {
     update();
 }
 
+/// setGridSize — establece el tamaño de la cuadrícula
 void PaintArea::setGridSize(int size) { pixelOptions.setGridSize(size); update(); }
+
+/// setGridActive — activa/desactiva la cuadrícula
 void PaintArea::setGridActive(bool active) { pixelOptions.setGridActive(active); update(); }
+
+/// isGridActive — true si la cuadrícula está activa
 bool PaintArea::isGridActive() const { return pixelOptions.isGridActive(); }
 
+/// setPixelArtResolution — cambia la resolución en modo Pixel Art
 void PaintArea::setPixelArtResolution(int resolution) {
     if (resolution != pixelOptions.getResolution() && pixelOptions.getIsPixelArtMode()) {
         pixelOptions.setPixelArtResolution(resolution);
@@ -942,6 +1068,7 @@ void PaintArea::setPixelArtResolution(int resolution) {
     }
 }
 
+/// addFrame — añade un frame nuevo (Pixel Art)
 void PaintArea::addFrame() {
     if (!pixelOptions.getIsPixelArtMode()) return;
     saveHistoryState(); guardarFrameActualEnAnimador();
@@ -949,6 +1076,8 @@ void PaintArea::addFrame() {
     emit framesChanged(animManager.getFrames(), animManager.getCurrentFrameIndex());
     emit layersChanged(); actualizarDimensionesFisicas(); update();
 }
+
+/// duplicateFrame — duplica el frame actual (Pixel Art)
 void PaintArea::duplicateFrame() {
     if (!pixelOptions.getIsPixelArtMode() || animManager.getFrames().isEmpty()) return;
     saveHistoryState(); guardarFrameActualEnAnimador();
@@ -956,6 +1085,8 @@ void PaintArea::duplicateFrame() {
     emit framesChanged(animManager.getFrames(), animManager.getCurrentFrameIndex());
     emit layersChanged(); actualizarDimensionesFisicas(); update();
 }
+
+/// deleteFrame — elimina el frame actual (Pixel Art)
 void PaintArea::deleteFrame() {
     if (!pixelOptions.getIsPixelArtMode() || animManager.getFrames().size() <= 1) return;
     saveHistoryState(); guardarFrameActualEnAnimador();
@@ -963,6 +1094,8 @@ void PaintArea::deleteFrame() {
     emit framesChanged(animManager.getFrames(), animManager.getCurrentFrameIndex());
     emit layersChanged(); actualizarDimensionesFisicas(); update();
 }
+
+/// goToFrame — salta a un frame concreto
 void PaintArea::goToFrame(int index) {
     if (!pixelOptions.getIsPixelArtMode() || index < 0 || index >= animManager.getFrames().size()) return;
     if (index == animManager.getCurrentFrameIndex()) return;
@@ -971,12 +1104,16 @@ void PaintArea::goToFrame(int index) {
     emit framesChanged(animManager.getFrames(), animManager.getCurrentFrameIndex());
     emit layersChanged(); actualizarDimensionesFisicas(); update();
 }
+
+/// nextFrame — avanza al siguiente frame
 void PaintArea::nextFrame() {
     if (pixelOptions.getIsPixelArtMode()) {
         int nextIdx = animManager.getCurrentFrameIndex() + 1;
         if (nextIdx < animManager.getFrames().size()) goToFrame(nextIdx);
     }
 }
+
+/// prevFrame — retrocede al frame anterior
 void PaintArea::prevFrame() {
     if (pixelOptions.getIsPixelArtMode()) {
         int prevIdx = animManager.getCurrentFrameIndex() - 1;
@@ -984,7 +1121,10 @@ void PaintArea::prevFrame() {
     }
 }
 
+/// clearHistory — limpia el historial
 void PaintArea::clearHistory() { undoStack.clear(); redoStack.clear(); }
+
+/// saveHistoryState — guarda el estado actual de la capa
 void PaintArea::saveHistoryState() {
     if (capaValida()) {
         undoStack.append(stack.currentImage());
@@ -992,6 +1132,8 @@ void PaintArea::saveHistoryState() {
     }
     redoStack.clear();
 }
+
+/// undo — deshace el último cambio
 void PaintArea::undo() {
     if (undoStack.isEmpty()) return;
     bakeAllPending();
@@ -1003,6 +1145,8 @@ void PaintArea::undo() {
     emit resolutionChanged(stack.width(), stack.height());
     update();
 }
+
+/// redo — rehace el último cambio deshecho
 void PaintArea::redo() {
     if (redoStack.isEmpty()) return;
     bakeAllPending();
@@ -1015,15 +1159,25 @@ void PaintArea::redo() {
     update();
 }
 
+/// setPenColor1 — establece el color primario
 void PaintArea::setPenColor1(const QColor &c) { penColor1 = c; refreshBrushStamps(); }
+
+/// setPenColor2 — establece el color secundario
 void PaintArea::setPenColor2(const QColor &c) { penColor2 = c; refreshBrushStamps(); }
+
+/// refreshBrushStamps — regenera los stamps del pincel activo
 void PaintArea::refreshBrushStamps() {
     if (ArtisticPresets::isArtisticTool(currentTool)) updateClassicToolStamp();
     else if (currentTool == ToolCustomBrush) updateCustomBrushStamp();
 }
+
+/// getPenColor1 — devuelve el color primario
 QColor PaintArea::getPenColor1() const { return penColor1; }
+
+/// getPenColor2 — devuelve el color secundario
 QColor PaintArea::getPenColor2() const { return penColor2; }
 
+/// setPenWidth — establece el ancho del pincel
 void PaintArea::setPenWidth(int newWidth) {
     penWidth = newWidth;
     m_maskEdit.setPenWidth(newWidth);
@@ -1036,13 +1190,17 @@ void PaintArea::setPenWidth(int newWidth) {
     }
 }
 
+/// setPenOpacity — establece la opacidad del pincel
 void PaintArea::setPenOpacity(int opacity) {
     penOpacity = opacity;
     if (ArtisticPresets::isArtisticTool(currentTool)) updateClassicToolStamp();
     else if (currentTool == ToolCustomBrush) updateCustomBrushStamp();
 }
 
+/// getZoomFactor — devuelve el zoom actual
 double PaintArea::getZoomFactor() const { return zoomFactor; }
+
+/// setZoomFactor — establece el zoom actual
 void PaintArea::setZoomFactor(double factor) {
     if (factor < 0.125) factor = 0.125;
     if (factor > 32.0) factor = 32.0;
@@ -1052,57 +1210,85 @@ void PaintArea::setZoomFactor(double factor) {
     update();
 }
 
+/// actualizarDimensionesFisicas — recalcula el tamaño del widget
 void PaintArea::actualizarDimensionesFisicas() {
     setFixedSize((int)(stack.width() * zoomFactor) + HANDLE_SIZE,
                  (int)(stack.height() * zoomFactor) + HANDLE_SIZE);
 }
 
+/// canvasSize — tamaño del canvas
 QSize PaintArea::canvasSize() const { return stack.canvasSize(); }
 
+/// setDarkMode — activa/desactiva el tema oscuro
 void PaintArea::setDarkMode(bool enabled) { darkModeActive = enabled; update(); }
+
+/// getDarkMode — true si el tema oscuro está activo
 bool PaintArea::getDarkMode() const { return darkModeActive; }
 
+/// setGradientType — establece el tipo de gradiente
 void PaintArea::setGradientType(int t) { gradientType = (GradientType)qBound(0, t, 2); }
+
+/// getGradientType — devuelve el tipo de gradiente
 int PaintArea::getGradientType() const { return (int)gradientType; }
+
+/// getGradientOpacity — devuelve la opacidad del gradiente
 int PaintArea::getGradientOpacity() const { return gradientOpacity; }
+
+/// setGradientOpacity — establece la opacidad del gradiente
 void PaintArea::setGradientOpacity(int o) { gradientOpacity = qBound(0, o, 255); }
+
+/// getGradientAngle — devuelve el ángulo del gradiente
 int PaintArea::getGradientAngle() const { return gradientAngle; }
+
+/// setGradientAngle — establece el ángulo del gradiente
 void PaintArea::setGradientAngle(int a) { gradientAngle = qBound(0, a, 360); }
+
+/// getGradientReverse — true si el gradiente está invertido
 bool PaintArea::getGradientReverse() const { return gradientReverse; }
+
+/// setGradientReverse — establece si el gradiente está invertido
 void PaintArea::setGradientReverse(bool r) { gradientReverse = r; }
+
+/// getGradientDither — true si el gradiente usa dithering
 bool PaintArea::getGradientDither() const { return gradientDither; }
+
+/// setGradientDither — activa/desactiva el dithering del gradiente
 void PaintArea::setGradientDither(bool d) { gradientDither = d; }
+
+/// getGradientBlendMode — devuelve el modo de fusión del gradiente
 int PaintArea::getGradientBlendMode() const { return gradientBlendMode; }
+
+/// setGradientBlendMode — establece el modo de fusión del gradiente
 void PaintArea::setGradientBlendMode(int m) { gradientBlendMode = m; }
+
+/// getGradientUseSecondColor — true si el gradiente usa el color 2
 bool PaintArea::getGradientUseSecondColor() const { return gradientUseSecondColor; }
+
+/// setGradientUseSecondColor — activa/desactiva el uso del color 2 en el gradiente
 void PaintArea::setGradientUseSecondColor(bool v) { gradientUseSecondColor = v; }
 
+/// isCloneSourceSet — true si hay fuente de clonado fijada
 bool PaintArea::isCloneSourceSet() const { return cloneSourceSet; }
+
+/// resetCloneSource — resetea la fuente de clonado
 void PaintArea::resetCloneSource() {
     cloneSourceSet = false;
     cloneBuffer = QImage();
     cloneIsStamping = false;
 }
 
-// ============================================================
-// setTool — refactorizado con Extract Method
-// ============================================================
+/// setTool — cambia la herramienta activa
 void PaintArea::setTool(ToolType tool) {
     handleGradientToolReentry(tool);
-
     resetStateForToolSwitch(tool);
-
     currentTool = tool;
     m_maskEdit.setCurrentTool(tool);
-
-    if (tool == ToolGradient)
-        openGradientSettings();
-
+    if (tool == ToolGradient) openGradientSettings();
     applyToolPreset(tool);
-
     update();
 }
 
+/// handleGradientToolReentry — reabre el diálogo si se vuelve a elegir gradient
 bool PaintArea::handleGradientToolReentry(ToolType tool) {
     if (tool == ToolGradient && currentTool == ToolGradient) {
         openGradientSettings();
@@ -1111,6 +1297,7 @@ bool PaintArea::handleGradientToolReentry(ToolType tool) {
     return false;
 }
 
+/// resetStateForToolSwitch — resetea el estado que dependía de la tool anterior
 void PaintArea::resetStateForToolSwitch(ToolType tool) {
     if (tool != ToolPenBezier) {
         bakeActivePath();
@@ -1146,6 +1333,7 @@ void PaintArea::resetStateForToolSwitch(ToolType tool) {
     }
 }
 
+/// applyToolPreset — aplica el preset correspondiente a la nueva tool
 void PaintArea::applyToolPreset(ToolType tool) {
     if (ArtisticPresets::isArtisticTool(tool)) {
         classicToolPreset = ArtisticPresets::presetForTool(tool);
@@ -1155,6 +1343,8 @@ void PaintArea::applyToolPreset(ToolType tool) {
         updateCustomBrushStamp();
     }
 }
+
+/// clearImage — limpia la imagen manteniendo el tamaño
 void PaintArea::clearImage() {
     saveHistoryState();
     bakeAllPending();
@@ -1176,6 +1366,7 @@ void PaintArea::clearImage() {
     update();
 }
 
+/// crearNuevoLienzo — crea un lienzo nuevo del tamaño indicado
 void PaintArea::crearNuevoLienzo(int w, int h, bool transparent) {
     if (w < 50) w = 50; if (h < 50) h = 50;
     saveHistoryState();
@@ -1197,6 +1388,7 @@ void PaintArea::crearNuevoLienzo(int w, int h, bool transparent) {
     }
 }
 
+/// abrirImagen — carga una imagen desde disco
 bool PaintArea::abrirImagen(const QString &fileName) {
     bakeAllPending();
     QImage nuevaImagen = cargarImagenRespetandoExif(fileName);
@@ -1225,6 +1417,7 @@ bool PaintArea::abrirImagen(const QString &fileName) {
     return true;
 }
 
+/// guardarImagen — guarda la imagen a disco
 bool PaintArea::guardarImagen(const QString &fileName, const char *fileFormat) {
     bakeAllPending();
     if (pixelOptions.getIsPixelArtMode()) guardarFrameActualEnAnimador();
@@ -1232,6 +1425,7 @@ bool PaintArea::guardarImagen(const QString &fileName, const char *fileFormat) {
     return finalImg.save(fileName, fileFormat);
 }
 
+/// guardarComoSvg — exporta la imagen a SVG
 bool PaintArea::guardarComoSvg(const QString &fileName) {
     bakeAllPending();
     if (pixelOptions.getIsPixelArtMode()) guardarFrameActualEnAnimador();
@@ -1251,6 +1445,7 @@ bool PaintArea::guardarComoSvg(const QString &fileName) {
     return true;
 }
 
+/// guardarComoGif — exporta la animación a GIF
 bool PaintArea::guardarComoGif(const QString &fileName, int delayMs, int scale) {
     if (!pixelOptions.getIsPixelArtMode()) return false;
     guardarFrameActualEnAnimador();
@@ -1260,6 +1455,7 @@ bool PaintArea::guardarComoGif(const QString &fileName, int delayMs, int scale) 
     return encoder.save(fileName, frames, delayMs, true, scale);
 }
 
+/// bakeSelection — hornea la selección actual
 void PaintArea::bakeSelection() {
     if (selMgr.isActive() && selMgr.hasBuffer()) {
         if (puedeEditarCapaActual()) {
@@ -1272,6 +1468,7 @@ void PaintArea::bakeSelection() {
     emit layersChanged(); update();
 }
 
+/// bakeTextFrame — hornea el marco de texto activo
 void PaintArea::bakeTextFrame() {
     if (textEdit.active && !textEdit.isEmpty()) {
         lastUsedTextFont = textEdit.font;
@@ -1281,11 +1478,13 @@ void PaintArea::bakeTextFrame() {
     update();
 }
 
+/// cancelTextFrame — cancela el marco de texto
 void PaintArea::cancelTextFrame() {
     textEdit.end();
     update();
 }
 
+/// updateTextFrame — actualiza el marco de texto
 void PaintArea::updateTextFrame(const QRect &rect, const QFont &font, const QColor &color) {
     if (!textEdit.active) {
         textEdit.beginNew(rect, font, color);
@@ -1297,14 +1496,28 @@ void PaintArea::updateTextFrame(const QRect &rect, const QFont &font, const QCol
     update();
 }
 
+/// isTextFrameActive — true si el marco de texto está activo
 bool PaintArea::isTextFrameActive() const { return textEdit.active; }
+
+/// getTextFrameRect — rect del marco de texto
 QRect PaintArea::getTextFrameRect() const { return textEdit.rect; }
+
+/// getTextFrameContent — contenido del marco de texto
 QString PaintArea::getTextFrameContent() const { return textEdit.text; }
+
+/// getTextFrameFont — fuente del marco de texto
 QFont PaintArea::getTextFrameFont() const { return textEdit.font; }
+
+/// getTextFrameColor — color del marco de texto
 QColor PaintArea::getTextFrameColor() const { return textEdit.color; }
+
+/// insertTextChar — inserta un carácter en el marco de texto
 void PaintArea::insertTextChar(const QString &ch) { textEdit.insert(ch); }
+
+/// deleteTextChar — borra un carácter del marco de texto
 void PaintArea::deleteTextChar() { textEdit.backspace(); }
 
+/// copiarSeleccion — copia la selección al portapapeles
 void PaintArea::copiarSeleccion() {
     QList<int> selected = selMgr.selectedObjectIndices();
     if (!selected.isEmpty()) {
@@ -1325,6 +1538,7 @@ void PaintArea::copiarSeleccion() {
     }
 }
 
+/// cortarSeleccion — corta la selección al portapapeles
 void PaintArea::cortarSeleccion() {
     QList<int> selected = selMgr.selectedObjectIndices();
     if (!selected.isEmpty()) {
@@ -1349,6 +1563,7 @@ void PaintArea::cortarSeleccion() {
     }
 }
 
+/// pegarClipboard — pega el contenido del portapapeles
 void PaintArea::pegarClipboard() {
     bakeSelection(); bakeActivePath(); bakeTextFrame();
     QImage imgToPaste = selMgr.getImageToPaste();
@@ -1363,6 +1578,7 @@ void PaintArea::pegarClipboard() {
     }
 }
 
+/// borrarSeleccion — borra la selección actual
 void PaintArea::borrarSeleccion() {
     QList<int> selected = selMgr.selectedObjectIndices();
     if (!selected.isEmpty()) {
@@ -1380,10 +1596,12 @@ void PaintArea::borrarSeleccion() {
     }
 }
 
+/// dragEnterEvent — acepta drag&drop de imágenes
 void PaintArea::dragEnterEvent(QDragEnterEvent *event) {
     if (event->mimeData()->hasUrls() || event->mimeData()->hasImage()) event->acceptProposedAction();
 }
 
+/// dropEvent — suelta una imagen en el lienzo
 void PaintArea::dropEvent(QDropEvent *event) {
     QImage droppedImage;
     if (event->mimeData()->hasUrls()) {
@@ -1419,6 +1637,7 @@ void PaintArea::dropEvent(QDropEvent *event) {
     }
 }
 
+/// cambiarDimensionesLienzo — cambia el tamaño del lienzo
 void PaintArea::cambiarDimensionesLienzo(int nuevoW, int nuevoH) {
     if (pixelOptions.getIsPixelArtMode()) { setPixelArtResolution(qMax(8, qMin(64, nuevoW))); return; }
     if (nuevoW < 50) nuevoW = 50; if (nuevoH < 50) nuevoH = 50;
@@ -1431,17 +1650,28 @@ void PaintArea::cambiarDimensionesLienzo(int nuevoW, int nuevoH) {
     update();
 }
 
+/// getFrames — devuelve la lista de frames
 const QList<QImage>& PaintArea::getFrames() const { return animManager.getFrames(); }
+
+/// getCurrentFrameIndex — índice del frame actual
 int PaintArea::getCurrentFrameIndex() const { return animManager.getCurrentFrameIndex(); }
+
+/// getIsPixelArtMode — true si el modo Pixel Art está activo
 bool PaintArea::getIsPixelArtMode() const { return pixelOptions.getIsPixelArtMode(); }
+
+/// getPixelGridSize — tamaño de la cuadrícula Pixel Art
 int PaintArea::getPixelGridSize() const { return pixelOptions.getGridSize(); }
+
+/// getPixelResolution — resolución del modo Pixel Art
 int PaintArea::getPixelResolution() const { return pixelOptions.getResolution(); }
+
+/// getVectorEditMode — true si el modo vectorial está activo
 bool PaintArea::getVectorEditMode() const { return vectorEditMode; }
+
+/// editTextObject — carga un objeto de texto para editar
 void PaintArea::editTextObject(int idx) { loadTextObjectForEditing(idx); }
 
-/// ============================================================
-/// keyPressEvent — dispatcher delgado
-/// ============================================================
+/// keyPressEvent — dispatcher delgado de teclas
 void PaintArea::keyPressEvent(QKeyEvent *event) {
     if (handleMaskBezierKeys(event))      return;
     if (handleClipboardShortcuts(event))  return;
@@ -1460,6 +1690,7 @@ void PaintArea::keyPressEvent(QKeyEvent *event) {
     QWidget::keyPressEvent(event);
 }
 
+/// handleMaskBezierKeys — atajos del Bezier de máscara
 bool PaintArea::handleMaskBezierKeys(QKeyEvent *event) {
     if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
     if (!m_maskEdit.hasBezierNodes() || textEdit.active)         return false;
@@ -1477,6 +1708,7 @@ bool PaintArea::handleMaskBezierKeys(QKeyEvent *event) {
     return false;
 }
 
+/// handleClipboardShortcuts — Ctrl+C/X/V
 bool PaintArea::handleClipboardShortcuts(QKeyEvent *event) {
     if (!(event->modifiers() & Qt::ControlModifier)) return false;
     if (textEdit.active) return false;
@@ -1486,12 +1718,14 @@ bool PaintArea::handleClipboardShortcuts(QKeyEvent *event) {
     return false;
 }
 
+/// handleDeleteKey — Delete / Backspace
 bool PaintArea::handleDeleteKey(QKeyEvent *event) {
     if (textEdit.active) return false;
     if (event->key() != Qt::Key_Delete && event->key() != Qt::Key_Backspace) return false;
     borrarSeleccion(); return true;
 }
 
+/// handleObjectShortcuts — O / I
 bool PaintArea::handleObjectShortcuts(QKeyEvent *event) {
     if (textEdit.active) return false;
     if (event->key() == Qt::Key_O) { convertSelectionToObject();  return true; }
@@ -1499,6 +1733,7 @@ bool PaintArea::handleObjectShortcuts(QKeyEvent *event) {
     return false;
 }
 
+/// handleVectorModeKeys — atajos del modo vector
 bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
     if (textEdit.active) return false;
     if (event->key() == Qt::Key_V && herramientaVectorizable() && !vectorEditMode) {
@@ -1539,6 +1774,7 @@ bool PaintArea::handleVectorModeKeys(QKeyEvent *event) {
     return false;
 }
 
+/// handleTextEditingKeys — atajos del editor de texto
 bool PaintArea::handleTextEditingKeys(QKeyEvent *event) {
     if (!textEdit.active) return false;
     switch (event->key()) {
@@ -1558,6 +1794,7 @@ bool PaintArea::handleTextEditingKeys(QKeyEvent *event) {
     return false;
 }
 
+/// handleToolSpecificKeys — Esc en Move, Ctrl+G en Gradient
 bool PaintArea::handleToolSpecificKeys(QKeyEvent *event) {
     if (currentTool == ToolMove && event->key() == Qt::Key_Escape) {
         selMgr.deselectAllObjects(); movingLayer = false; update(); return true;
@@ -1569,6 +1806,7 @@ bool PaintArea::handleToolSpecificKeys(QKeyEvent *event) {
     return false;
 }
 
+/// handleBezierPenKeys — Enter/Esc en BezierPathTool
 bool PaintArea::handleBezierPenKeys(QKeyEvent *event) {
     if (currentTool != ToolPenBezier || bezierTool.isEmpty()) return false;
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
@@ -1581,9 +1819,7 @@ bool PaintArea::handleBezierPenKeys(QKeyEvent *event) {
     return false;
 }
 
-/// ============================================================
-/// mousePressEvent — dispatcher
-/// ============================================================
+/// mousePressEvent — dispatcher de clicks
 void PaintArea::mousePressEvent(QMouseEvent *event) {
     setFocus();
     if (event->button() != Qt::LeftButton && event->button() != Qt::RightButton) return;
@@ -1607,6 +1843,7 @@ void PaintArea::mousePressEvent(QMouseEvent *event) {
         handlePressInsideCanvas(event, pos, scaledWidth);
 }
 
+/// handlePressMaskBezier — click en Bezier de máscara
 bool PaintArea::handlePressMaskBezier(const QPoint &pos) {
     if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
     bool consumed = m_maskEdit.beginBezierClick(pos, zoomFactor, activeMouseButton == Qt::RightButton);
@@ -1614,6 +1851,7 @@ bool PaintArea::handlePressMaskBezier(const QPoint &pos) {
     return consumed;
 }
 
+/// handlePressMaskPaint — click con pintura en máscara
 bool PaintArea::handlePressMaskPaint(const QPoint &pos) {
     if (!stack.isEditingMask() || !herramientaDePintura()) return false;
     if (!m_maskEdit.beginStroke(pos)) return false;
@@ -1623,6 +1861,7 @@ bool PaintArea::handlePressMaskPaint(const QPoint &pos) {
     return true;
 }
 
+/// handlePressVector — click en modo vector
 bool PaintArea::handlePressVector(const QPoint &pos) {
     if (!vectorEditMode || !herramientaVectorizable()) return false;
     if (activeMouseButton != Qt::LeftButton) return false;
@@ -1642,6 +1881,7 @@ bool PaintArea::handlePressVector(const QPoint &pos) {
     return true;
 }
 
+/// handlePressTextActive — click en marco de texto activo
 bool PaintArea::handlePressTextActive(const QPoint &pos) {
     if (!textEdit.active || activeMouseButton != Qt::LeftButton) return false;
     TextEngine::Handle h = textEdit.hitHandleAt(pos);
@@ -1657,6 +1897,7 @@ bool PaintArea::handlePressTextActive(const QPoint &pos) {
     return false;
 }
 
+/// handlePressCanvasHandles — click en handles de resize del canvas
 bool PaintArea::handlePressCanvasHandles(const QPoint &rawPos) {
     if (activeMouseButton != Qt::LeftButton || selMgr.isActive() || textEdit.active)
         return false;
@@ -1673,6 +1914,7 @@ bool PaintArea::handlePressCanvasHandles(const QPoint &rawPos) {
     return false;
 }
 
+/// handlePressSelectionGizmo — click en el gizmo de la selección
 bool PaintArea::handlePressSelectionGizmo(const QPoint &pos) {
     if (!selMgr.isActive() || activeMouseButton != Qt::LeftButton || vectorEditMode)
         return false;
@@ -1705,6 +1947,7 @@ bool PaintArea::handlePressSelectionGizmo(const QPoint &pos) {
     return false;
 }
 
+/// handlePressZoom — click con herramienta Zoom
 bool PaintArea::handlePressZoom(QMouseEvent *event, const QPoint &rawPos) {
     if (currentTool != ToolZoom) return false;
     QPoint viewportPos = mapToParent(rawPos);
@@ -1715,6 +1958,7 @@ bool PaintArea::handlePressZoom(QMouseEvent *event, const QPoint &rawPos) {
     return true;
 }
 
+/// handlePressCapaBloqueada — bloquea edición si la capa está bloqueada
 bool PaintArea::handlePressCapaBloqueada() {
     if (!capaValida() || !stack.currentLocked()) return false;
     if (currentTool == ToolPicker || currentTool == ToolZoom) return false;
@@ -1722,6 +1966,7 @@ bool PaintArea::handlePressCapaBloqueada() {
     return true;
 }
 
+/// handlePressPenBezier — click con la pluma Bezier
 bool PaintArea::handlePressPenBezier(const QPoint &pos) {
     if (currentTool != ToolPenBezier) return false;
     bool completed = bezierTool.click(pos, zoomFactor, activeMouseButton == Qt::RightButton);
@@ -1730,6 +1975,7 @@ bool PaintArea::handlePressPenBezier(const QPoint &pos) {
     return true;
 }
 
+/// handlePressSelectRect — click con selección rectangular
 bool PaintArea::handlePressSelectRect(const QPoint &pos) {
     if (currentTool != ToolSelect) return false;
     if (vectorEditMode) return true;
@@ -1739,6 +1985,7 @@ bool PaintArea::handlePressSelectRect(const QPoint &pos) {
     return true;
 }
 
+/// handlePressSelectFree — click con selección libre/lazo
 bool PaintArea::handlePressSelectFree(const QPoint &pos) {
     if (currentTool != ToolSelectFree &&
         currentTool != ToolLassoExtract &&
@@ -1750,6 +1997,7 @@ bool PaintArea::handlePressSelectFree(const QPoint &pos) {
     return true;
 }
 
+/// handlePressBucket — click con cubeta de pintura
 void PaintArea::handlePressBucket(const QPoint &pos, const QColor &colorDeUso) {
     saveHistoryState();
     if (capaValida()) {
@@ -1758,11 +2006,13 @@ void PaintArea::handlePressBucket(const QPoint &pos, const QColor &colorDeUso) {
     }
 }
 
+/// handlePressPicker — click con gotero
 void PaintArea::handlePressPicker(const QPoint &pos) {
     QColor picked = stack.compositedImage().pixelColor(pos);
     emit colorPicked((activeMouseButton == Qt::LeftButton) ? 1 : 2, picked);
 }
 
+/// handlePressText — click con herramienta Texto
 void PaintArea::handlePressText(const QPoint &pos, const QColor &colorDeUso) {
     if (textEdit.active) return;
     const int defaultW = qMax(100, stack.width() / 4);
@@ -1773,6 +2023,7 @@ void PaintArea::handlePressText(const QPoint &pos, const QColor &colorDeUso) {
     update();
 }
 
+/// handlePressGradient — click con herramienta Gradiente
 bool PaintArea::handlePressGradient(QMouseEvent *event, const QPoint &pos) {
     if (currentTool != ToolGradient) return false;
     if (event->modifiers() & Qt::AltModifier) {
@@ -1789,6 +2040,7 @@ bool PaintArea::handlePressGradient(QMouseEvent *event, const QPoint &pos) {
     return true;
 }
 
+/// handlePressClone — click con herramienta Clonar
 bool PaintArea::handlePressClone(QMouseEvent *event, const QPoint &pos) {
     if (currentTool != ToolClone) return false;
 
@@ -1816,6 +2068,7 @@ bool PaintArea::handlePressClone(QMouseEvent *event, const QPoint &pos) {
     return true;
 }
 
+/// handlePressMove — click con herramienta Mover
 void PaintArea::handlePressMove(QMouseEvent *event, const QPoint &pos) {
     const QPointF canvasPos(pos.x(), pos.y());
     const bool shiftHeld = (event->modifiers() & Qt::ShiftModifier);
@@ -1871,6 +2124,7 @@ void PaintArea::handlePressMove(QMouseEvent *event, const QPoint &pos) {
     }
 }
 
+/// handlePressDeform — click con pincel de deformación
 void PaintArea::handlePressDeform(const QPoint &pos) {
     if (!puedeEditarCapaActual()) return;
     saveHistoryState();
@@ -1878,6 +2132,7 @@ void PaintArea::handlePressDeform(const QPoint &pos) {
                    activeMouseButton == Qt::RightButton);
 }
 
+/// handlePressGenericStroke — click con cualquier pincel
 void PaintArea::handlePressGenericStroke(const QPoint &pos, int scaledWidth) {
     saveHistoryState();
     startPoint = pos;
@@ -1940,6 +2195,7 @@ void PaintArea::handlePressGenericStroke(const QPoint &pos, int scaledWidth) {
     }
 }
 
+/// handlePressInsideCanvas — dispatcher de clicks dentro del canvas
 void PaintArea::handlePressInsideCanvas(QMouseEvent *event, const QPoint &pos, int scaledWidth) {
     if (handlePressCapaBloqueada())      return;
     if (handlePressPenBezier(pos))       return;
@@ -1962,9 +2218,7 @@ void PaintArea::handlePressInsideCanvas(QMouseEvent *event, const QPoint &pos, i
     handlePressGenericStroke(pos, scaledWidth);
 }
 
-/// ============================================================
-/// mouseMoveEvent — dispatcher
-/// ============================================================
+/// mouseMoveEvent — dispatcher de movimiento
 void PaintArea::mouseMoveEvent(QMouseEvent *event) {
     const QPoint rawPos = event->position().toPoint();
     const QPoint pos(rawPos.x() / zoomFactor, rawPos.y() / zoomFactor);
@@ -1992,6 +2246,7 @@ void PaintArea::mouseMoveEvent(QMouseEvent *event) {
     handleMoveCursorUpdate(pos);
 }
 
+/// handleMoveMaskBezier — drag del Bezier de máscara
 bool PaintArea::handleMoveMaskBezier(const QPoint &pos) {
     if (!stack.isEditingMask() || currentTool != ToolPenBezier) return false;
     if (!m_maskEdit.isDraggingNode()) return false;
@@ -1999,6 +2254,7 @@ bool PaintArea::handleMoveMaskBezier(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveMaskPaint — pintura continua en máscara
 bool PaintArea::handleMoveMaskPaint(const QPoint &pos) {
     if (!drawing || !stack.isEditingMask() || !herramientaDePintura()) return false;
     m_maskEdit.continueStroke(lastPoint, pos);
@@ -2006,6 +2262,7 @@ bool PaintArea::handleMoveMaskPaint(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveVector — movimiento en modo vectorial
 bool PaintArea::handleMoveVector(const QPoint &pos) {
     if (!vectorEditMode || !herramientaVectorizable()) return false;
     vectorHoverPos = QPointF(pos.x(), pos.y());
@@ -2025,6 +2282,7 @@ bool PaintArea::handleMoveVector(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveTextActive — drag/resize del marco de texto
 bool PaintArea::handleMoveTextActive(const QPoint &pos) {
     if (!textEdit.active) return false;
     if (textEdit.dragging) { textEdit.dragTo(pos); return true; }
@@ -2032,6 +2290,7 @@ bool PaintArea::handleMoveTextActive(const QPoint &pos) {
     return false;
 }
 
+/// handleMoveCanvasResize — drag de los handles de resize del canvas
 bool PaintArea::handleMoveCanvasResize(const QPoint &rawPos) {
     if (!resizingCanvas) return false;
     if (resizeMode == 1 || resizeMode == 3)
@@ -2042,6 +2301,7 @@ bool PaintArea::handleMoveCanvasResize(const QPoint &rawPos) {
     return true;
 }
 
+/// handleMoveSelectionRotate — rotación de la selección activa
 bool PaintArea::handleMoveSelectionRotate(QMouseEvent *event, const QPoint &pos) {
     if (!selMgr.isRotating()) return false;
     selMgr.updateRotation(pos);
@@ -2050,6 +2310,7 @@ bool PaintArea::handleMoveSelectionRotate(QMouseEvent *event, const QPoint &pos)
     return true;
 }
 
+/// handleMoveSelectionResize — resize de la selección activa
 bool PaintArea::handleMoveSelectionResize(QMouseEvent *event, const QPoint &pos) {
     if (!selMgr.isResizing()) return false;
     const bool keepAspect = (event->modifiers() & Qt::ShiftModifier);
@@ -2059,6 +2320,7 @@ bool PaintArea::handleMoveSelectionResize(QMouseEvent *event, const QPoint &pos)
     return true;
 }
 
+/// handleMoveSelectionDrag — drag de la selección activa
 bool PaintArea::handleMoveSelectionDrag(const QPoint &pos) {
     if (!selMgr.isDragging()) return false;
     selMgr.moveTo(pos);
@@ -2066,6 +2328,7 @@ bool PaintArea::handleMoveSelectionDrag(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveGradientPreview — preview del gradiente durante el drag
 bool PaintArea::handleMoveGradientPreview(const QPoint &pos) {
     if (!drawingGradient || currentTool != ToolGradient) return false;
     gradientEnd = pos;
@@ -2073,6 +2336,7 @@ bool PaintArea::handleMoveGradientPreview(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveClone — clonado continuo durante el drag
 bool PaintArea::handleMoveClone(const QPoint &pos, Qt::MouseButtons buttons) {
     if (!cloneIsStamping || currentTool != ToolClone || !cloneSourceSet) return false;
     if (!(buttons & Qt::LeftButton)) return false;
@@ -2085,6 +2349,7 @@ bool PaintArea::handleMoveClone(const QPoint &pos, Qt::MouseButtons buttons) {
     return true;
 }
 
+/// handleMoveDeform — deformación continua durante el drag
 bool PaintArea::handleMoveDeform(const QPoint &pos, Qt::MouseButtons buttons) {
     if (!m_deform.isActive() || currentTool != ToolDeform) return false;
     if (!(buttons & (Qt::LeftButton | Qt::RightButton))) return false;
@@ -2094,6 +2359,7 @@ bool PaintArea::handleMoveDeform(const QPoint &pos, Qt::MouseButtons buttons) {
     return true;
 }
 
+/// handleMoveObjectManipulation — drag/rotate/scale de un objeto
 bool PaintArea::handleMoveObjectManipulation(QMouseEvent *event, const QPoint &pos) {
     const QPointF canvasPos(pos.x(), pos.y());
     const int activeIdx = selMgr.activeObjectIndex();
@@ -2120,6 +2386,7 @@ bool PaintArea::handleMoveObjectManipulation(QMouseEvent *event, const QPoint &p
     return false;
 }
 
+/// handleMoveMovingLayer — arrastre de la capa entera
 bool PaintArea::handleMoveMovingLayer(const QPoint &pos) {
     if (!movingLayer || moveLayerIdx < 0 || moveLayerIdx >= stack.count()) return false;
     const QPoint delta = pos - moveStartPos;
@@ -2133,6 +2400,7 @@ bool PaintArea::handleMoveMovingLayer(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveToolHover — hover con Move (cambia el cursor)
 bool PaintArea::handleMoveToolHover(const QPoint &pos) {
     const QPointF canvasPos(pos.x(), pos.y());
     const int activeIdx = selMgr.activeObjectIndex();
@@ -2147,6 +2415,7 @@ bool PaintArea::handleMoveToolHover(const QPoint &pos) {
     return true;
 }
 
+/// handleMoveTool — dispatcher de la herramienta Mover
 bool PaintArea::handleMoveTool(QMouseEvent *event, const QPoint &pos) {
     if (currentTool != ToolMove) return false;
     if (event->buttons() & Qt::LeftButton) {
@@ -2157,6 +2426,7 @@ bool PaintArea::handleMoveTool(QMouseEvent *event, const QPoint &pos) {
     return handleMoveToolHover(pos);
 }
 
+/// handleMoveSelectionHover — hover sobre el gizmo de selección
 bool PaintArea::handleMoveSelectionHover(const QPoint &pos) {
     if (!selMgr.isActive() || !selMgr.hasBuffer()) return false;
     if (currentTool != ToolSelect && currentTool != ToolSelectFree && currentTool != ToolMove)
@@ -2173,6 +2443,7 @@ bool PaintArea::handleMoveSelectionHover(const QPoint &pos) {
     return true;
 }
 
+/// applyBrushStroke — aplica un trazo de pincel entre dos puntos
 void PaintArea::applyBrushStroke(const QPoint &pos, const QColor &colorDeUso, const QColor &colorOpuesto) {
     if (!capaValida()) return;
     const double segLen = QLineF(lastClassicPoint, QPointF(pos)).length();
@@ -2185,27 +2456,32 @@ void PaintArea::applyBrushStroke(const QPoint &pos, const QColor &colorDeUso, co
         strokeTotalLength, strokeAccumulatedLength - segLen);
 }
 
+/// applyPixelArtStroke — aplica un trazo pixel art
 void PaintArea::applyPixelArtStroke(const QPoint &pos, const QColor &colorDeUso) {
     if (capaValida())
         drawPixelArtLine(stack.currentImage(), lastPoint, pos, colorDeUso, currentTool, true);
 }
 
+/// applyPencilStroke — aplica un trazo de lápiz grafito
 void PaintArea::applyPencilStroke(const QPoint &pos, const QColor &colorDeUso, int scaledWidth) {
     if (capaValida())
         PaintEngine::applyGraphitePencil(stack.currentImage(), lastPoint, pos, colorDeUso, scaledWidth, penOpacity);
 }
 
+/// applyEraserStroke — aplica un trazo de goma
 void PaintArea::applyEraserStroke(const QPoint &pos, int scaledWidth) {
     if (capaValida())
         PaintEngine::applyEraserLine(stack.currentImage(), lastPoint, pos, scaledWidth, true);
 }
 
+/// applyRetouchStroke — aplica un trazo de retoque (blur/heal/burn)
 void PaintArea::applyRetouchStroke(const QPoint &pos) {
     RetouchTools::applyRetouchAlongLine(stack.currentImage(), lastPoint, pos,
                                         penWidth, mouseSensitivity, penOpacity,
                                         retouchToolCode(currentTool));
 }
 
+/// updateSelectionPreview — invalida la zona de preview de la selección
 void PaintArea::updateSelectionPreview(const QRect &selPrevia, const QPoint &puntoPrevio, const QPoint &pos) {
     if (currentTool == ToolSelect || currentTool == ToolSelectFree ||
         currentTool == ToolLassoExtract || currentTool == ToolLassoDelete) {
@@ -2217,9 +2493,7 @@ void PaintArea::updateSelectionPreview(const QRect &selPrevia, const QPoint &pun
     }
 }
 
-// ============================================================
-// handleMoveDrawing — refactorizado con Extract Method
-// ============================================================
+/// handleMoveDrawing — dispatcher del dibujo continuo
 bool PaintArea::handleMoveDrawing(const QPoint &pos, int scaledWidth) {
     if (!drawing) return false;
 
@@ -2237,6 +2511,7 @@ bool PaintArea::handleMoveDrawing(const QPoint &pos, int scaledWidth) {
     return true;
 }
 
+/// dispatchDrawingByTool — elige el handler de dibujo según la tool
 void PaintArea::dispatchDrawingByTool(const QPoint &pos, int scaledWidth,
                                       const QColor &colorDeUso, const QColor &colorOpuesto) {
     if (usaStampDePincel()) {
@@ -2260,15 +2535,18 @@ void PaintArea::dispatchDrawingByTool(const QPoint &pos, int scaledWidth,
     }
 }
 
+/// isPixelArtModeActive — true si el modo Pixel Art está activo
 bool PaintArea::isPixelArtModeActive() const {
     return pixelOptions.getIsPixelArtMode();
 }
 
+/// isPixelArtStrokeTool — true si la tool usa trazo pixel art
 bool PaintArea::isPixelArtStrokeTool() const {
     return currentTool == ToolPencil || currentTool == ToolEraser ||
            currentTool == ToolMirrorPen || currentTool == ToolLighten;
 }
 
+/// handleDrawingBrushStroke — dibujo con pinceles artísticos/custom
 void PaintArea::handleDrawingBrushStroke(const QPoint &pos,
                                          const QColor &colorDeUso,
                                          const QColor &colorOpuesto) {
@@ -2276,37 +2554,71 @@ void PaintArea::handleDrawingBrushStroke(const QPoint &pos,
     lastPoint = pos;
 }
 
+/// handleDrawingPixelArt — dibujo pixel art
 void PaintArea::handleDrawingPixelArt(const QPoint &pos, const QColor &colorDeUso) {
     applyPixelArtStroke(pos, colorDeUso);
     lastPoint = pos;
 }
 
+/// handleDrawingSelectionRect — arrastre de selección rectangular
 void PaintArea::handleDrawingSelectionRect(const QPoint &pos) {
     selMgr.updateRect(startPoint, pos, stack.canvasSize());
 }
 
+/// handleDrawingSelectionFree — arrastre de selección libre/lazo
 void PaintArea::handleDrawingSelectionFree(const QPoint &pos) {
     selMgr.updateFree(pos, stack.canvasSize());
 }
 
+/// handleDrawingPencil — trazo de lápiz grafito continuo
 void PaintArea::handleDrawingPencil(const QPoint &pos, const QColor &colorDeUso, int scaledWidth) {
     applyPencilStroke(pos, colorDeUso, scaledWidth);
     lastPoint = pos;
 }
 
+/// handleDrawingEraser — trazo de goma continuo
 void PaintArea::handleDrawingEraser(const QPoint &pos, int scaledWidth) {
     applyEraserStroke(pos, scaledWidth);
     lastPoint = pos;
 }
 
+/// handleDrawingRetouch — trazo de retoque continuo
 void PaintArea::handleDrawingRetouch(const QPoint &pos) {
     applyRetouchStroke(pos);
     lastPoint = pos;
 }
 
-/// ============================================================
-/// mouseReleaseEvent — dispatcher
-/// ============================================================
+/// handleMoveTextHover — hover sobre el marco de texto
+bool PaintArea::handleMoveTextHover(const QPoint &pos) {
+    if (!textEdit.active) return false;
+    TextEngine::Handle h = textEdit.hitHandleAt(pos);
+    setCursor(TextEngine::cursorForHandle(h));
+    update();
+    return true;
+}
+
+/// handleMoveCursorUpdate — actualiza el cursor cuando no hay drag activo
+void PaintArea::handleMoveCursorUpdate(const QPoint &pos) {
+    setCursor(Qt::CrossCursor);
+    if (currentTool == ToolZoom || currentTool == ToolPicker) setCursor(Qt::PointingHandCursor);
+    else if (currentTool == ToolClone) setCursor(Qt::CrossCursor);
+    else if (currentTool == ToolBlur || currentTool == ToolHeal ||
+             currentTool == ToolShadowBurn || currentTool == ToolDeform)
+        setCursor(Qt::BlankCursor);
+
+    if (currentTool == ToolClone && cloneSourceSet) invalidarPreviewClone(pos);
+
+    if (currentTool == ToolBlur || currentTool == ToolHeal ||
+        currentTool == ToolShadowBurn || currentTool == ToolDeform ||
+        usaStampDePincel()) {
+        update(rectSiluetaWidget(hoverPos).adjusted(-2, -2, 2, 2));
+    } else if (currentTool == ToolPenBezier) {
+        bezierTool.move(pos, zoomFactor);
+        update();
+    }
+}
+
+/// mouseReleaseEvent — dispatcher del click soltado
 void PaintArea::mouseReleaseEvent(QMouseEvent *event) {
     if (event->button() != activeMouseButton) return;
 
@@ -2331,6 +2643,7 @@ void PaintArea::mouseReleaseEvent(QMouseEvent *event) {
     }
 }
 
+/// handleReleaseMaskPaint — fin del trazo sobre máscara
 bool PaintArea::handleReleaseMaskPaint() {
     if (!drawing || !stack.isEditingMask() || !herramientaDePintura()) return false;
     m_maskEdit.endStroke();
@@ -2341,18 +2654,21 @@ bool PaintArea::handleReleaseMaskPaint() {
     return true;
 }
 
+/// handleReleaseVectorPoint — fin del drag de un punto vectorial
 bool PaintArea::handleReleaseVectorPoint() {
     if (!vectorEditMode || !draggingVectorPoint) return false;
     draggingVectorPoint = false;
     return true;
 }
 
+/// handleReleaseTextDragResize — fin del drag/resize del marco de texto
 bool PaintArea::handleReleaseTextDragResize() {
     if (textEdit.dragging) { textEdit.endDrag();   return true; }
     if (textEdit.resizing) { textEdit.endResize(); return true; }
     return false;
 }
 
+/// handleReleaseCanvasResize — fin del resize del canvas
 bool PaintArea::handleReleaseCanvasResize() {
     if (!resizingCanvas) return false;
     resizingCanvas = false;
@@ -2361,6 +2677,7 @@ bool PaintArea::handleReleaseCanvasResize() {
     return true;
 }
 
+/// handleReleaseSelectionGizmo — fin del drag/resize/rotate de la selección
 bool PaintArea::handleReleaseSelectionGizmo() {
     if (selMgr.isResizing()) { selMgr.setResizing(false); selMgr.setResizeHandle(ObjectHandle::None); return true; }
     if (selMgr.isDragging()) { selMgr.setDragging(false); return true; }
@@ -2368,6 +2685,7 @@ bool PaintArea::handleReleaseSelectionGizmo() {
     return false;
 }
 
+/// handleReleaseGradient — fin del drag del gradiente
 bool PaintArea::handleReleaseGradient() {
     if (!drawingGradient || currentTool != ToolGradient) return false;
     drawingGradient = false;
@@ -2382,6 +2700,7 @@ bool PaintArea::handleReleaseGradient() {
     return true;
 }
 
+/// handleReleaseClone — fin del clonado
 bool PaintArea::handleReleaseClone() {
     if (!cloneIsStamping || currentTool != ToolClone) return false;
     cloneIsStamping = false;
@@ -2389,6 +2708,7 @@ bool PaintArea::handleReleaseClone() {
     return true;
 }
 
+/// handleReleaseDeform — fin del trazo de deformación
 bool PaintArea::handleReleaseDeform() {
     if (!m_deform.isActive() || currentTool != ToolDeform) return false;
     m_deform.end();
@@ -2398,6 +2718,7 @@ bool PaintArea::handleReleaseDeform() {
     return true;
 }
 
+/// handleReleaseMove — fin del drag con Mover
 bool PaintArea::handleReleaseMove() {
     if (currentTool != ToolMove) return false;
     if (selMgr.isObjectDragging() || selMgr.isObjectRotating() || selMgr.isObjectScaling()) {
@@ -2416,6 +2737,7 @@ bool PaintArea::handleReleaseMove() {
     return false;
 }
 
+/// finishLassoRelease — cierra y aplica el lazo
 void PaintArea::finishLassoRelease() {
     drawing = false;
     selMgr.closeFreePath();
@@ -2438,6 +2760,7 @@ void PaintArea::finishLassoRelease() {
     activeMouseButton = Qt::NoButton;
 }
 
+/// finishSelectionRelease — finaliza la selección rectangular/libre
 void PaintArea::finishSelectionRelease(const QPoint &finalPoint) {
     drawing = false;
     if (currentTool == ToolSelectFree) {
@@ -2460,6 +2783,7 @@ void PaintArea::finishSelectionRelease(const QPoint &finalPoint) {
     }
 }
 
+/// finishShapeRelease — finaliza el trazado de una figura
 void PaintArea::finishShapeRelease(const QPoint &finalPoint, int scaledWidth) {
     QColor colorDeUso = obtenerColorDeTrabajo(activeMouseButton);
     if (currentTool != ToolEraser) colorDeUso.setAlpha(penOpacity);
@@ -2494,6 +2818,7 @@ void PaintArea::finishShapeRelease(const QPoint &finalPoint, int scaledWidth) {
     }
 }
 
+/// handleReleaseDrawing — dispatcher de fin de dibujo
 bool PaintArea::handleReleaseDrawing(const QPoint &finalPoint, int scaledWidth) {
     if (!drawing) return false;
 
@@ -2518,9 +2843,7 @@ bool PaintArea::handleReleaseDrawing(const QPoint &finalPoint, int scaledWidth) 
     return true;
 }
 
-/// ============================================================
-/// wheelEvent
-/// ============================================================
+/// wheelEvent — zoom con la rueda del ratón
 void PaintArea::wheelEvent(QWheelEvent *event) {
     QPoint localPos = event->position().toPoint();
     QPoint viewportPos = mapToParent(localPos);
@@ -2533,9 +2856,7 @@ void PaintArea::wheelEvent(QWheelEvent *event) {
     event->accept();
 }
 
-/// ============================================================
-/// paintEvent — dispatcher
-/// ============================================================
+/// paintEvent — dispatcher de pintado
 void PaintArea::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, false);
@@ -2572,6 +2893,7 @@ void PaintArea::paintEvent(QPaintEvent *event) {
     paintCursorSilhouette(painter, scaledWidth);
 }
 
+/// paintCheckerboard — dibuja el fondo de tablero de ajedrez
 void PaintArea::paintCheckerboard(QPainter &painter, const QRect &canvasRect) {
     static const QPixmap checker = []() {
         QPixmap c(16, 16); c.fill(QColor(255, 255, 255));
@@ -2584,6 +2906,7 @@ void PaintArea::paintCheckerboard(QPainter &painter, const QRect &canvasRect) {
     painter.fillRect(canvasRect, QBrush(checker));
 }
 
+/// paintMaskOverlay — overlay de la máscara en edición
 void PaintArea::paintMaskOverlay(QPainter &painter) {
     if (!stack.isEditingMask()) return;
 
@@ -2608,11 +2931,13 @@ void PaintArea::paintMaskOverlay(QPainter &painter) {
         m_maskEdit.paintBezierOverlay(painter, zoomFactor);
 }
 
+/// paintBezierOverlay — overlay del Bezier activo
 void PaintArea::paintBezierOverlay(QPainter &painter) {
     if (currentTool == ToolPenBezier && !stack.isEditingMask())
         bezierTool.paint(painter, zoomFactor);
 }
 
+/// paintCanvasResizePreview — preview del resize del canvas
 void PaintArea::paintCanvasResizePreview(QPainter &painter) {
     if (!resizingCanvas) return;
     painter.setPen(QPen(darkModeActive ? Qt::white : Qt::black,
@@ -2620,6 +2945,7 @@ void PaintArea::paintCanvasResizePreview(QPainter &painter) {
     painter.drawRect(0, 0, previewCanvasSize.x(), previewCanvasSize.y());
 }
 
+/// paintShapePreview — preview de la figura en construcción
 void PaintArea::paintShapePreview(QPainter &painter, int scaledWidth) {
     if (!drawing) return;
     if (!isShapeTool(currentTool) && currentTool != ToolPixelStroke) return;
@@ -2637,11 +2963,13 @@ void PaintArea::paintShapePreview(QPainter &painter, int scaledWidth) {
     }
 }
 
+/// paintActiveSelection — dibuja la selección activa
 void PaintArea::paintActiveSelection(QPainter &painter) {
     if (selMgr.isActive() && selMgr.hasBuffer())
         selMgr.drawSelectionOverlay(painter, zoomFactor);
 }
 
+/// paintVectorEditOverlay — overlay del modo vectorial
 void PaintArea::paintVectorEditOverlay(QPainter &painter) {
     if (!vectorEditMode || !herramientaVectorizable() || vectorPoints.isEmpty()) return;
 
@@ -2680,6 +3008,7 @@ void PaintArea::paintVectorEditOverlay(QPainter &painter) {
     }
 }
 
+/// paintSelectionPreview — preview de la selección en drag
 void PaintArea::paintSelectionPreview(QPainter &painter) {
     if (!drawing) return;
     if (currentTool != ToolSelect && currentTool != ToolSelectFree &&
@@ -2693,6 +3022,7 @@ void PaintArea::paintSelectionPreview(QPainter &painter) {
     else painter.drawPath(selMgr.path());
 }
 
+/// paintTextFrame — dibuja el marco de texto activo
 void PaintArea::paintTextFrame(QPainter &painter) {
     if (!textEdit.active) return;
     TextEngine::Style ts = currentTextStyle();
@@ -2700,6 +3030,7 @@ void PaintArea::paintTextFrame(QPainter &painter) {
     textEdit.paint(painter, zoomFactor, ts);
 }
 
+/// paintGradientPreview — preview del gradiente
 void PaintArea::paintGradientPreview(QPainter &painter) {
     if (!drawingGradient || currentTool != ToolGradient) return;
 
@@ -2710,6 +3041,7 @@ void PaintArea::paintGradientPreview(QPainter &painter) {
     paintGradientHandleOverlay(painter);
 }
 
+/// buildGradientForPreview — construye el gradiente para el preview
 std::unique_ptr<QGradient> PaintArea::buildGradientForPreview() const {
     QColor c1 = gradientReverse ? penColor2 : penColor1;
     QColor c2;
@@ -2740,6 +3072,7 @@ std::unique_ptr<QGradient> PaintArea::buildGradientForPreview() const {
     return grad;
 }
 
+/// paintGradientFill — rellena el canvas con el gradiente
 void PaintArea::paintGradientFill(QPainter &painter, QGradient *grad) {
     if (!grad) return;
     painter.setPen(Qt::NoPen);
@@ -2749,6 +3082,7 @@ void PaintArea::paintGradientFill(QPainter &painter, QGradient *grad) {
     painter.setOpacity(1.0);
 }
 
+/// paintGradientHandleOverlay — overlay del gradiente con info
 void PaintArea::paintGradientHandleOverlay(QPainter &painter) {
     painter.setPen(QPen(QColor(255, 80, 80), 2.0 / zoomFactor, Qt::DashLine));
     painter.setBrush(Qt::NoBrush);
@@ -2774,6 +3108,7 @@ void PaintArea::paintGradientHandleOverlay(QPainter &painter) {
                      gradientStart.y() - 10 / zoomFactor, info);
 }
 
+/// paintCloneOverlay — overlay del clonado (fuente y destino)
 void PaintArea::paintCloneOverlay(QPainter &painter) {
     if (currentTool != ToolClone || !cloneSourceSet) return;
 
@@ -2796,6 +3131,7 @@ void PaintArea::paintCloneOverlay(QPainter &painter) {
     }
 }
 
+/// paintSelectionGizmos — gizmos de objetos y selección
 void PaintArea::paintSelectionGizmos(QPainter &painter) {
     if (currentTool == ToolMove)
         selMgr.drawObjectGizmos(painter, zoomFactor, darkModeActive);
@@ -2803,6 +3139,7 @@ void PaintArea::paintSelectionGizmos(QPainter &painter) {
         selMgr.drawSelectionGizmo(painter, zoomFactor, darkModeActive, selBlue(), selBlueLight());
 }
 
+/// paintCanvasHandles — handles de resize del canvas
 void PaintArea::paintCanvasHandles(QPainter &painter) {
     painter.setPen(QPen(darkModeActive ? Qt::white : QColor("#404040"), 1));
     painter.setBrush(Qt::white);
@@ -2811,6 +3148,7 @@ void PaintArea::paintCanvasHandles(QPainter &painter) {
     painter.drawRect(getBottomRightHandle());
 }
 
+/// paintCursorSilhouette — silueta del pincel bajo el cursor
 void PaintArea::paintCursorSilhouette(QPainter &painter, int scaledWidth) {
     if (!rect().contains(hoverPos) || textEdit.active || vectorEditMode) return;
 
@@ -2835,6 +3173,7 @@ void PaintArea::paintCursorSilhouette(QPainter &painter, int scaledWidth) {
     }
 }
 
+/// paintMaskBrushSilhouette — silueta del pincel de máscara
 void PaintArea::paintMaskBrushSilhouette(QPainter &painter) {
     painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 140) : QColor(0, 0, 0, 120),
                         1, Qt::DashLine));
@@ -2857,6 +3196,7 @@ void PaintArea::paintMaskBrushSilhouette(QPainter &painter) {
     painter.restore();
 }
 
+/// paintRetouchSilhouette — silueta de las herramientas de retoque
 void PaintArea::paintRetouchSilhouette(QPainter &painter, int scaledWidth) {
     painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 180) : QColor(0, 0, 0, 150), 1));
     painter.setBrush(Qt::NoBrush);
@@ -2865,10 +3205,12 @@ void PaintArea::paintRetouchSilhouette(QPainter &painter, int scaledWidth) {
         (double)((scaledWidth * 2 + 2) * zoomFactor));
 }
 
+/// paintDeformSilhouette — silueta del pincel de deformación
 void PaintArea::paintDeformSilhouette(QPainter &painter) {
     m_deform.paintOverlay(painter, hoverPos, zoomFactor, darkModeActive);
 }
 
+/// paintCloneSilhouette — silueta del pincel de clonado
 void PaintArea::paintCloneSilhouette(QPainter &painter, int scaledWidth) {
     painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 200) : QColor(0, 0, 0, 180), 1.5));
     painter.setBrush(Qt::NoBrush);
@@ -2878,6 +3220,7 @@ void PaintArea::paintCloneSilhouette(QPainter &painter, int scaledWidth) {
     painter.drawLine(hoverPos.x(), hoverPos.y() - 4, hoverPos.x(), hoverPos.y() + 4);
 }
 
+/// paintBrushStampSilhouette — silueta del pincel artístico/custom
 void PaintArea::paintBrushStampSilhouette(QPainter &painter) {
     painter.setPen(QPen(darkModeActive ? QColor(255, 255, 255, 120) : QColor(0, 0, 0, 100),
                         1, Qt::DashLine));
