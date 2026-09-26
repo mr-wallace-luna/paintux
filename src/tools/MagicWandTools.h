@@ -14,9 +14,8 @@
 #include <vector>
 #include <algorithm>
 
-// ============================================================
+
 // Resultado de la varita mágica
-// ============================================================
 struct MagicWandResult {
     QImage mask;          // ARGB32: alpha=255 selección dura, alpha<255 borde suave
     QRect boundingBox;    // Rect que envuelve la selección
@@ -26,9 +25,8 @@ struct MagicWandResult {
     MagicWandResult() : pixelsSelected(0), pixelsSoft(0) {}
 };
 
-// ============================================================
+
 // Opciones configurables
-// ============================================================
 struct MagicWandOptions {
     int tolerance       = 30;    // 0-255
     bool contiguous     = true;  // true=solo conectados; false=todo el lienzo
@@ -42,9 +40,8 @@ struct MagicWandOptions {
     MagicWandOptions() {}
 };
 
-// ============================================================
+
 // Color Lab para modo perceptual (opcional)
-// ============================================================
 struct LabColor { double L, a, b; };
 
 static inline double srgbCompToLinear(int c) {
@@ -76,24 +73,18 @@ static inline LabColor rgbToLab(int r, int g, int b) {
     return lab;
 }
 
-// ============================================================
+
 // Nodo para region growing con prioridad
-// ============================================================
+
 struct WandNode { double dist; int x, y; };
 struct WandNodeCmp {
     bool operator()(const WandNode &a, const WandNode &b) const { return a.dist > b.dist; }
 };
 
-// ============================================================
 // MagicWandTools
-// ============================================================
 class MagicWandTools {
 public:
 
-    // ------------------------------------------------------------
-    // API vieja (compatible). Usa RGB euclidiano EXACTO como la
-    // versión original que funcionaba, + bordes suaves.
-    // ------------------------------------------------------------
     static MagicWandResult applyMagicWand(const QImage &image, const QPoint &pos,
                                           int tolerance = 32,
                                           bool contiguous = true,
@@ -110,9 +101,9 @@ public:
         return applyMagicWand(image, pos, opts);
     }
 
-    // ------------------------------------------------------------
+
     // API nueva con opciones completas
-    // ------------------------------------------------------------
+
     static MagicWandResult applyMagicWand(const QImage &image, const QPoint &pos,
                                           const MagicWandOptions &opts) {
         MagicWandResult result;
@@ -255,10 +246,7 @@ public:
         return result;
     }
 
-    // ------------------------------------------------------------
-    // extractMaskedRegion: extrae SOLO los píxeles de la máscara
-    // (alpha suave -> bordes naturales)
-    // ------------------------------------------------------------
+
     static QImage extractMaskedRegion(const QImage &source, const QImage &mask, const QRect &bbox) {
         if (source.isNull() || mask.isNull()) return QImage();
         QRect r = bbox.intersected(source.rect()).intersected(mask.rect());
@@ -290,9 +278,8 @@ public:
         return out;
     }
 
-    // ------------------------------------------------------------
+
     // clearMaskedRegion: borra SOLO la forma de la máscara
-    // ------------------------------------------------------------
     static void clearMaskedRegion(QImage &target, const QImage &mask) {
         if (target.isNull() || mask.isNull()) return;
         if (target.size() != mask.size()) return;
@@ -302,9 +289,8 @@ public:
         p.end();
     }
 
-    // ------------------------------------------------------------
+
     // featherMask: blur gaussiano real del borde
-    // ------------------------------------------------------------
     static void featherMask(QImage &mask, int radius) {
         if (mask.isNull() || radius <= 0) return;
         if (mask.format() != QImage::Format_ARGB32) mask = mask.convertToFormat(QImage::Format_ARGB32);
@@ -313,9 +299,8 @@ public:
         gaussianBlurAlpha(mask, sigma);
     }
 
-    // ------------------------------------------------------------
+
     // smoothMask: blur gaussiano con sigma explícito
-    // ------------------------------------------------------------
     static void smoothMask(QImage &mask, double sigma) {
         if (mask.isNull() || sigma <= 0) return;
         if (mask.format() != QImage::Format_ARGB32) mask = mask.convertToFormat(QImage::Format_ARGB32);
@@ -355,9 +340,8 @@ public:
         return m;
     }
 
-    // ------------------------------------------------------------
+
     // contractMask: con distance transform
-    // ------------------------------------------------------------
     static QImage contractMask(const QImage &mask, int pixels) {
         if (mask.isNull() || pixels <= 0) return mask;
         QImage m = mask.copy();
@@ -389,9 +373,7 @@ public:
         return m;
     }
 
-    // ------------------------------------------------------------
     // sharpenMaskEdges: realza el contraste del borde de la máscara
-    // ------------------------------------------------------------
     static QImage sharpenMaskEdges(const QImage &mask, double amount) {
         if (mask.isNull() || amount <= 0.0) return mask;
         QImage m = mask.copy();
@@ -414,10 +396,7 @@ public:
         return m;
     }
 
-    // ------------------------------------------------------------
-    // refineMaskWithEdges: ajusta la selección a bordes reales (Sobel)
-    // strength>0 contrae hacia el borde, <0 expande
-    // ------------------------------------------------------------
+
     static QImage refineMaskWithEdges(const QImage &mask, const QImage &source, double strength) {
         if (mask.isNull() || source.isNull()) return mask;
         if (mask.size() != source.size()) return mask;
@@ -475,9 +454,8 @@ public:
         return m;
     }
 
-    // ------------------------------------------------------------
+
     // estimateAutoTolerance: sugiere tolerancia según varianza local
-    // ------------------------------------------------------------
     static int estimateAutoTolerance(const QImage &image, const QPoint &pos, int radius = 5) {
         if (image.isNull()) return 32;
         if (pos.x() < 0 || pos.x() >= image.width() || pos.y() < 0 || pos.y() >= image.height()) return 32;
@@ -513,9 +491,7 @@ public:
         return qBound(8, (int)(2.0 * stddev), 128);
     }
 
-    // ------------------------------------------------------------
     // visualizeMask: convierte la máscara a imagen visible (debug)
-    // ------------------------------------------------------------
     static QImage visualizeMask(const QImage &mask) {
         if (mask.isNull()) return QImage();
         QImage m = mask;
@@ -532,19 +508,14 @@ public:
         return out;
     }
 
-    // ------------------------------------------------------------
     // Wrapper compatible con la API vieja de PaintEngine
-    // ------------------------------------------------------------
     static QImage magicWandMask(const QImage &image, const QPoint &pos, int tolerance) {
         MagicWandResult r = applyMagicWand(image, pos, tolerance, true, true);
         return r.mask;
     }
 
 private:
-
-    // ------------------------------------------------------------
     // Recalcula bounding box y contadores tras un post-proceso
-    // ------------------------------------------------------------
     static void recomputeMaskStats(MagicWandResult &result) {
         result.pixelsSelected = 0;
         result.pixelsSoft = 0;
@@ -569,9 +540,8 @@ private:
             result.boundingBox = QRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
-    // ------------------------------------------------------------
+
     // Muestreo del color semilla (promedio en un radio)
-    // ------------------------------------------------------------
     static void sampleSeedColor(const QImage &img, const QPoint &pos, int radius,
                                 int &r, int &g, int &b, int &a) {
         int x0 = qMax(0, pos.x() - radius), x1 = qMin(img.width() - 1, pos.x() + radius);
@@ -589,9 +559,7 @@ private:
         b = (int)(sb / count); a = (int)(sa / count);
     }
 
-    // ------------------------------------------------------------
     // Gaussian blur separable sobre el canal alpha
-    // ------------------------------------------------------------
     static void gaussianBlurAlpha(QImage &img, double sigma) {
         if (img.isNull() || sigma <= 0) return;
         if (img.format() != QImage::Format_ARGB32) img = img.convertToFormat(QImage::Format_ARGB32);
@@ -644,10 +612,7 @@ private:
         }
     }
 
-    // ------------------------------------------------------------
-    // Distance transform (Chamfer 3x3) para expand/contract precisos
-    // zeroSet[i]=true -> distancia 0
-    // ------------------------------------------------------------
+
     static QVector<double> computeDistanceField(const QVector<bool> &zeroSet, int w, int h) {
         const double INF = 1e30;
         const double D1 = 1.0, D2 = 1.41421356237;
@@ -682,4 +647,6 @@ private:
     }
 };
 
-#endif // MAGICWANDTOOLS_H
+#endif 
+
+// MAGICWANDTOOLS_H
