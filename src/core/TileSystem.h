@@ -17,7 +17,6 @@ static const int TILE_SIZE = 256;
     TilCach() = default;
 
     void init(int w, int h) {
-        
         if (w == m_w && m_h == h && !m_tiles.isEmpty()) return;
         m_w = w; m_h = h;
         m_cols = (w + TILE_SIZE - 1) / TILE_SIZE;
@@ -25,7 +24,6 @@ static const int TILE_SIZE = 256;
         m_tiles.clear();
         m_tiles.resize(m_cols * m_rows);
         markAllDirty();
-
     }
 
     int width()  const { return m_w; }
@@ -40,7 +38,6 @@ static const int TILE_SIZE = 256;
 
     
     void markDirty(const QRect &region) {
-
         if (!isValid() || region.isEmpty()) return;
         QRect r = region.intersected(QRect(0, 0, m_w, m_h));
         if (r.isEmpty()) return;
