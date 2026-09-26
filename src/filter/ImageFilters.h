@@ -35,12 +35,12 @@
 #include <cmath>
 
 // ============================================================
-// Ajuste HSL por canal (estilo Photoshop Hue/Saturation)
+// Ajuste HSL por canal
 // ============================================================
 struct HSLAdjust {
-    double hue = 0;         // -180..180 grados
-    double saturation = 0;  // -100..100
-    double lightness = 0;   // -100..100
+    double hue = 0;
+    double saturation = 0;
+    double lightness = 0;
 };
 
 struct FilterParams {
@@ -57,15 +57,17 @@ struct FilterParams {
     int rawGamma = 100;
     bool colorize = false;
     double colorizeStrength = 1.0;
-    // HSL por canal: 0=Master, 1=Rojos, 2=Amarillos, 3=Verdes, 4=Cianes, 5=Azules, 6=Magentas
     HSLAdjust hsl[7];
-    bool colorizeHSL = false; // "Colorize" de Photoshop (tono único), distinto de colorize B/N
+    bool colorizeHSL = false;
     QVector<QPointF> curves[4];
+
     FilterParams() {
         for (int i = 0; i < 4; ++i)
             curves[i] = QVector<QPointF>{ QPointF(0, 0), QPointF(255, 255) };
     }
+
     static FilterParams identity() { return FilterParams(); }
+
     bool isIdentity() const {
         if (brightness != 0 || contrast != 0 || saturation != 0 || exposure != 0) return false;
         if (shadows != 0 || highlights != 0 || temperature != 0 || vignette != 0) return false;
@@ -105,7 +107,6 @@ enum FilterPresetId {
     PresetNoMexico
 };
 
-// Iconos circulares de las filas compactas
 enum AjusteIcono {
     IconoMontania = 0,
     IconoSol,
@@ -119,7 +120,7 @@ enum AjusteIcono {
 };
 
 // ============================================================
-// CurvEditor — editor visual de curvas
+// CurvEditor
 // ============================================================
 class CurvEditor : public QWidget {
     Q_OBJECT
@@ -161,11 +162,24 @@ private:
     bool m_dark = true;
     QVector<QPointF> m_points[4];
     QVector<int> m_histogram;
+
+    // --- [REFACTOR] Spline monotono para buildLUT ---
+    struct CurveSpline {
+        QVector<double> xs, ys, m;
+    };
+    static CurveSpline computeMonotoneSpline(const QVector<QPointF> &pts);
+    static void evaluateSplineLUT(const CurveSpline &sp, uchar lut[256]);
+
+    // --- [REFACTOR] Helpers de paintEvent ---
+    void paintBackgroundAndGrid(QPainter &p);
+    void paintHistogram(QPainter &p);
+    void paintGhostCurves(QPainter &p);
+    void paintMainCurve(QPainter &p);
+    void paintPoints(QPainter &p);
 };
 
 // ============================================================
-// Barra de rangos de tono (visual, estilo Photoshop)
-// Dos barras de tono + manijas del canal activo (±15° lleno, ±45° caída)
+// HueRangeBar
 // ============================================================
 class HueRangeBar : public QWidget {
     Q_OBJECT
@@ -179,6 +193,9 @@ private:
     int m_ch = 0;
 };
 
+// ============================================================
+// ImageFiltersDialog
+// ============================================================
 class ImageFiltersDialog : public QDialog {
     Q_OBJECT
 private:
@@ -199,9 +216,7 @@ private:
     QLabel    *lblColorizeStrength = nullptr;
     CurvEditor *curvEditor = nullptr;
     QComboBox *comboChannel;
-    // Color: solo lo que NO existe en Básico (Tinte e Intensidad)
     QSlider *sliderRawTint = nullptr, *sliderRawVibrance = nullptr;
-    // HSL por canal (sección dentro de la pestaña Color)
     QComboBox *comboHslChannel = nullptr;
     QSlider   *sliderHslHue = nullptr, *sliderHslSat = nullptr, *sliderHslLum = nullptr;
     QCheckBox *chkColorizeHSL = nullptr;
@@ -219,6 +234,7 @@ private:
     QImage originalImage;
     QImage workImage;
     QImage previewResult;
+
     double brightness = 0, contrast = 0, saturation = 0, exposure = 0;
     double shadows = 0, highlights = 0, temperature = 0, vignette = 0;
     QColor shadowColor = Qt::black, highlightColor = Qt::white;
@@ -232,11 +248,13 @@ private:
     int rawGamma = 100;
     bool colorize = false;
     double colorizeStrength = 1.0;
+
     bool    m_dark = true;
     QString c_bg, c_panel, c_input, c_preview;
     QString c_text, c_textMuted, c_textDesc;
     QString c_border, c_borderStrong;
     QString c_accent, c_accentHover, c_hover, c_groove;
+
     void    setupTheme(bool dark);
     void    applyGlobalStyleSheet();
     QString labelStyle() const;
@@ -252,7 +270,8 @@ private:
     void    styleColorButton(QPushButton *btn, const QColor &col);
     QLabel* makeDescLabel(const QString &text) const;
     static bool detectDarkTheme();
-    void    loadHslSliders();   // recarga los 3 sliders HSL desde m_hsl[m_hslChannel]
+    void    loadHslSliders();
+
 public:
     ImageFiltersDialog(const QImage &img, QWidget *parent = nullptr,
                        bool floatingMode = false, int darkMode = -1);
@@ -272,13 +291,14 @@ public:
     static void applyFilterParams(QImage &img, const FilterParams &fp,
                                   const QPoint &subOffset = QPoint(),
                                   const QSize &fullSize = QSize());
+
 signals:
     void paramsChanged();
+
 private:
     QGroupBox *makeSliderGroup(const QString &title, const QString &desc,
                                int min, int max, int initial,
                                QSlider **outSlider, std::function<void(int)> onChanged);
-    // Filas compactas (icono circular + nombre + valor + slider)
     QWidget *makeCompactRow(const QIcon &ic, const QString &label,
                             int min, int max, int initial,
                             QSlider **outSlider, std::function<void(int)> onChanged,
@@ -292,6 +312,30 @@ private:
     static void pixelateImage(QImage &img, int blockSize, const QPoint &subOffset = QPoint());
     static void halftoneImage(QImage &img, int cell, const QPoint &subOffset = QPoint());
     static void boxBlur(QImage &img, int radius);
+
+    // ============================================================
+    // [REFACTOR] Helpers extraídos de applyFilterParams
+    // ============================================================
+    struct ColorAdjustFactors {
+        double expFactor = 1.0;
+        double contrastFactor = 1.0;
+        double gammaExp = 1.0;
+    };
+    static ColorAdjustFactors computeColorFactors(const FilterParams &fp);
+    static bool hasColorAdjustments(const FilterParams &fp);
+    static bool hasHslAdjustments(const FilterParams &fp);
+    static bool hasCurveAdjustments(const FilterParams &fp);
+    static QRgb applyColorPixel(double r, double g, double b, int a,
+                                const FilterParams &fp,
+                                const ColorAdjustFactors &f);
+    static void applyColorPass(QImage &img, const FilterParams &fp,
+                               const ColorAdjustFactors &f);
+    static void applyColorizePass(QImage &img, const FilterParams &fp);
+    static void applyHslPass(QImage &img, const FilterParams &fp);
+    static void applyCurvesPass(QImage &img, const FilterParams &fp);
+    static void applySharpenPass(QImage &img, const FilterParams &fp);
+    static void applyVignettePass(QImage &img, const FilterParams &fp,
+                                  const QPoint &subOffset, const QSize &fullSize);
 };
 
 #endif // IMAGE_FILTERS_H
