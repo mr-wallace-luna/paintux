@@ -31,7 +31,6 @@ private:
     double m_angle = 0.0;
     bool dragging = false;
 public:
-
     GradientDirectionWidget(QWidget *parent = nullptr) : QWidget(parent) {
         setFixedSize(100, 100);
         setCursor(Qt::CrossCursor);
@@ -43,6 +42,7 @@ signals:
 
     void angleChanged(double angle);
 protected:
+
     void mousePressEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton) { dragging = true; updateFromPos(e->position()); }
     }
@@ -96,8 +96,8 @@ protected:
 // DIÁLOGO
 class GradientDialog : public QDialog {
     Q_OBJECT
+    
 private:
-
     QComboBox *typeCombo;
     QSlider *opacitySlider;
     QSpinBox *opacitySpin;
