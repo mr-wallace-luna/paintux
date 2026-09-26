@@ -8,11 +8,9 @@
 struct Tile {
     QPixmap pixmap;   
     bool dirty = true; 
-
 };
 
 class TilCach {
-
 public:
 static const int TILE_SIZE = 256;
 
@@ -62,7 +60,6 @@ static const int TILE_SIZE = 256;
     bool isDirty(int idx) const { return idx >= 0 && idx < m_tiles.size() && m_tiles[idx].dirty; }
 
     void setPixmap(int idx, const QPixmap &pm) {
-        
         if (idx >= 0 && idx < m_tiles.size()) { m_tiles[idx].pixmap = pm; m_tiles[idx].dirty = false; }
     }
 
