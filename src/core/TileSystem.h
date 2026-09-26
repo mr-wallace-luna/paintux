@@ -6,7 +6,6 @@
 #include <QVector>
 
 struct Tile {
-    
     QPixmap pixmap;   
     bool dirty = true; 
 
@@ -72,7 +71,6 @@ static const int TILE_SIZE = 256;
     }
 
     QRect tileRect(int idx) const {
-
         int cx = idx % m_cols;
         int ry = idx / m_cols;
         QRect r(cx * TILE_SIZE, ry * TILE_SIZE, TILE_SIZE, TILE_SIZE);
@@ -81,7 +79,6 @@ static const int TILE_SIZE = 256;
 
     
     QVector<int> tilesIntersecting(const QRect &region) const {
-
         QVector<int> out;
         if (!isValid() || region.isEmpty()) return out;
         QRect r = region.intersected(QRect(0, 0, m_w, m_h));
@@ -117,3 +114,4 @@ private:
 };
 
 #endif
+
