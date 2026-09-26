@@ -30,6 +30,7 @@ class GradientDirectionWidget : public QWidget {
 private:
     double m_angle = 0.0;
     bool dragging = false;
+    
 public:
     GradientDirectionWidget(QWidget *parent = nullptr) : QWidget(parent) {
         setFixedSize(100, 100);
@@ -96,7 +97,7 @@ protected:
 // DIÁLOGO
 class GradientDialog : public QDialog {
     Q_OBJECT
-    
+
 private:
     QComboBox *typeCombo;
     QSlider *opacitySlider;
