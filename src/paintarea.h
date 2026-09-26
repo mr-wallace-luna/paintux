@@ -87,13 +87,6 @@
 
 class mainwind;
 
-int leerOrientacionExif(const QString &filePath);
-QImage aplicaOrientacionExif(const QImage &img, int orientation);
-QImage cargarImagenRespetandoExif(const QString &filePath);
-
-// ============================================================
-// FrameThumbnail — miniatura de frame de animación
-// ============================================================
 class FrameThumbnail : public QFrame {
     Q_OBJECT
 private:
@@ -118,10 +111,6 @@ class PaintArea : public QWidget {
     Q_OBJECT
 
 public:
-    // ============================================================
-    // ExifTiffReader — lector de bloques TIFF con endianness
-    // (público para que parseExifSegment() del .cpp lo use)
-    // ============================================================
     struct ExifTiffReader {
         const uchar *tiff = nullptr;
         int tiffLen = 0;
@@ -132,7 +121,6 @@ public:
     };
 
 private:
-    ///capas y mascaras
     LayerStack stack;
 
     void recomponerImagen() { stack.recompose(); }
@@ -146,13 +134,11 @@ private:
     const int HANDLE_SIZE = 8;
     QPoint previewCanvasSize;
 
-    // Colores y pincel
     QColor penColor1 = Qt::black, penColor2 = Qt::white;
     int penWidth = 3, penOpacity = 255;
     ToolType currentTool = ToolPencil;
     double zoomFactor = 0.50;
 
-    //  Pinceles personalizados
     BrushSettings customBrushPresets[2];
     int activeCustomBrushIndex = 0;
     QPointF lastCustomPoint;
@@ -167,45 +153,34 @@ private:
     double strokeAccumulatedLength = 0.0;
     bool strokeInProgress = false;
 
-    // Timer de dibujo continuo
     QTimer *continuousDrawTimer;
     QPoint currentMousePos;
     QPoint previousMousePos;
 
-    // =============================================
-    // SELECCIÓN Y OBJETOS → SelectionManager
-    // =============================================
     SelectionManager selMgr;
     MaskEditController m_maskEdit;
 
-    // --- Modo vector ---
     bool vectorEditMode = false;
     QVector<QPointF> vectorPoints;
     int selectedVectorPoint = -1;
     bool draggingVectorPoint = false;
     QPointF vectorHoverPos;
 
-    // Tema
     bool darkModeActive = false;
 
-    //  Pixel Art
     PixelArtOptions pixelOptions;
     PixelAnimationManager animManager;
 
-    // PLUMA BEZIER →
     BezierPathTool bezierTool;
 
-    //  Sensibilidad
     double mouseSensitivity = 1.0;
     int activeColorTarget = 1;
 
     TextEngine::EditSession textEdit;
 
-    // Historial de pasos hacia atras
     QList<QImage> undoStack, redoStack;
     const int MAX_HISTORY = 30;
 
-    // gradiente
     enum GradientType { GradientLinear = 0, GradientRadial = 1, GradientConic = 2 };
     GradientType gradientType = GradientLinear;
     QPoint gradientStart, gradientEnd;
@@ -217,14 +192,12 @@ private:
     int gradientBlendMode = 0;
     bool gradientUseSecondColor = false;
 
-    // Clonar
     bool cloneSourceSet = false;
     QPoint cloneSource;
     QPoint cloneInitialDest;
     QImage cloneBuffer;
     bool cloneIsStamping = false;
 
-    // deformacion
     DeformController m_deform;
 
     bool movingLayer = false;
@@ -237,9 +210,6 @@ private:
 
     friend class mainwind;
 
-    // ============================================================
-    // Categorización de herramientas (antes ToolCategories)
-    // ============================================================
     static bool isShapeTool(ToolType t) {
         switch (t) {
             case ToolLine: case ToolRectangle: case ToolEllipse: case ToolRoundRect:
@@ -283,9 +253,6 @@ private:
         return ArtisticPresets::isArtisticTool(t) || t == ToolCustomBrush;
     }
 
-    // ============================================================
-    // Helpers internos
-    // ============================================================
     QColor selBlue() const;
     QColor selBlueLight() const;
     bool capaValida(int idx = -1) const {
@@ -298,12 +265,10 @@ private:
     QColor colorVectorActivo() const;
     bool herramientaDePintura() const { return isPaintingTool(currentTool); }
 
-    // --- Predicados y estado del pincel activo ---
     bool usaStampDePincel() const { return usesBrushStampFor(currentTool); }
     const BrushSettings& activePreset() const;
     const QImage& activeStamp() const;
 
-    // --- Notificación estándar ---
     void refreshAndNotify(bool recompose = true);
     void bakeAllPending();
     void beginEdit();
@@ -326,7 +291,6 @@ private:
     void invalidarTrazo(const QPoint &a, const QPoint &b, const QRect &extraCanvas = QRect());
     void invalidarPreviewClone(const QPoint &cursorPos);
 
-    // Métodos que usan SelectionManager
     void convertSelectionToObject();
     void integrateSelectedObjects();
     void loadTextObjectForEditing(int idx);
@@ -334,12 +298,10 @@ private:
     void bakeObjectIntoLayer(int idx);
     void bakeAllObjects();
 
-    //  Handles de lienzo
     QRect getRightHandle() const;
     QRect getBottomHandle() const;
     QRect getBottomRightHandle() const;
 
-    //  Vector
     int findVectorPointAt(const QPointF &canvasPos) const;
     bool isNearFirstPoint(const QPointF &canvasPos) const;
     void finalizeVectorPath();
@@ -353,9 +315,6 @@ private:
                               : TextEngine::Style::forLightMode();
     }
 
-    // ============================================================
-    // keyPressEvent helpers
-    // ============================================================
     bool handleMaskBezierKeys(QKeyEvent *event);
     bool handleClipboardShortcuts(QKeyEvent *event);
     bool handleDeleteKey(QKeyEvent *event);
@@ -365,9 +324,6 @@ private:
     bool handleBezierPenKeys(QKeyEvent *event);
     bool handleToolSpecificKeys(QKeyEvent *event);
 
-    // ============================================================
-    // mousePressEvent helpers
-    // ============================================================
     bool handlePressMaskBezier(const QPoint &pos);
     bool handlePressMaskPaint(const QPoint &pos);
     bool handlePressVector(const QPoint &pos);
@@ -389,9 +345,6 @@ private:
     void handlePressDeform(const QPoint &pos);
     void handlePressGenericStroke(const QPoint &pos, int scaledWidth);
 
-    // ============================================================
-    // mouseMoveEvent helpers
-    // ============================================================
     bool handleMoveMaskBezier(const QPoint &pos);
     bool handleMoveMaskPaint(const QPoint &pos);
     bool handleMoveVector(const QPoint &pos);
@@ -420,9 +373,6 @@ private:
     void applyRetouchStroke(const QPoint &pos);
     void updateSelectionPreview(const QRect &selPrevia, const QPoint &puntoPrevio, const QPoint &pos);
 
-    // ============================================================
-    // mouseReleaseEvent helpers
-    // ============================================================
     bool handleReleaseMaskPaint();
     bool handleReleaseVectorPoint();
     bool handleReleaseTextDragResize();
@@ -437,9 +387,6 @@ private:
     void finishSelectionRelease(const QPoint &finalPoint);
     void finishShapeRelease(const QPoint &finalPoint, int scaledWidth);
 
-    // ============================================================
-    // paintEvent helpers
-    // ============================================================
     void paintCheckerboard(QPainter &painter, const QRect &canvasRect);
     void paintMaskOverlay(QPainter &painter);
     void paintBezierOverlay(QPainter &painter);
@@ -455,21 +402,33 @@ private:
     void paintCanvasHandles(QPainter &painter);
     void paintCursorSilhouette(QPainter &painter, int scaledWidth);
 
-    // ============================================================
-    // paintCursorSilhouette helpers
-    // ============================================================
     void paintMaskBrushSilhouette(QPainter &painter);
     void paintRetouchSilhouette(QPainter &painter, int scaledWidth);
     void paintDeformSilhouette(QPainter &painter);
     void paintCloneSilhouette(QPainter &painter, int scaledWidth);
     void paintBrushStampSilhouette(QPainter &painter);
 
-    // ============================================================
-    // paintGradientPreview helpers
-    // ============================================================
     std::unique_ptr<QGradient> buildGradientForPreview() const;
     void paintGradientFill(QPainter &painter, QGradient *grad);
     void paintGradientHandleOverlay(QPainter &painter);
+
+    bool handleGradientToolReentry(ToolType tool);
+    void resetStateForToolSwitch(ToolType tool);
+    void applyToolPreset(ToolType tool);
+
+    void dispatchDrawingByTool(const QPoint &pos, int scaledWidth,
+                               const QColor &colorDeUso, const QColor &colorOpuesto);
+    bool isPixelArtModeActive() const;
+    bool isPixelArtStrokeTool() const;
+    void handleDrawingBrushStroke(const QPoint &pos,
+                                  const QColor &colorDeUso,
+                                  const QColor &colorOpuesto);
+    void handleDrawingPixelArt(const QPoint &pos, const QColor &colorDeUso);
+    void handleDrawingSelectionRect(const QPoint &pos);
+    void handleDrawingSelectionFree(const QPoint &pos);
+    void handleDrawingPencil(const QPoint &pos, const QColor &colorDeUso, int scaledWidth);
+    void handleDrawingEraser(const QPoint &pos, int scaledWidth);
+    void handleDrawingRetouch(const QPoint &pos);
 
 public:
     explicit PaintArea(QWidget *parent = nullptr);
@@ -484,7 +443,6 @@ public:
     BrushSettings getCustomBrush(int index) const;
     int getActiveCustomBrushIndex() const;
 
-    // Máscaras B/N
     bool hasLayerMask(int layerIndex) const;
     bool isLayerMaskEnabled(int layerIndex) const;
     int getMaskEditLayer() const;
@@ -498,7 +456,6 @@ public:
     void applyMaskToLayer(int layerIndex);
     void invertLayerMask(int layerIndex);
 
-    // Máscaras de COLOR
     bool hasLayerColorMask(int layerIndex) const;
     bool isLayerColorMaskEnabled(int layerIndex) const;
     FilterParams getLayerColorMaskParams(int layerIndex) const;
@@ -509,7 +466,6 @@ public:
     void setLiveColorMaskPreview(int layerIndex, const FilterParams &fp);
     void clearLiveColorMaskPreview(int layerIndex);
 
-    // Capas
     void addLayer();
     void addImageLayer(const QImage &img);
     void insertImageAsObject(const QImage &img);
@@ -531,17 +487,14 @@ public:
     void flipCurrentLayer(bool horizontal, bool vertical);
     void rotateCurrentLayer(int angle);
 
-    // Selección
     void magicWandSelect(const QPoint &pos, int tolerance = 32);
 
-    // Pixel Art
     void setPixelArtMode(bool active, int resolution = 32);
     void setGridSize(int size);
     void setGridActive(bool active);
     bool isGridActive() const;
     void setPixelArtResolution(int resolution);
 
-    // Animación
     void addFrame();
     void duplicateFrame();
     void deleteFrame();
@@ -549,34 +502,28 @@ public:
     void nextFrame();
     void prevFrame();
 
-    // Historial
     void clearHistory();
     void saveHistoryState();
     void undo();
     void redo();
 
-    // Colores
     void setPenColor1(const QColor &c);
     void setPenColor2(const QColor &c);
     void refreshBrushStamps();
     QColor getPenColor1() const;
     QColor getPenColor2() const;
 
-    // Pincel
     void setPenWidth(int newWidth);
     void setPenOpacity(int opacity);
 
-    // Zoom
     double getZoomFactor() const;
     void setZoomFactor(double factor);
     void actualizarDimensionesFisicas();
     QSize canvasSize() const;
 
-    // Tema
     void setDarkMode(bool enabled);
     bool getDarkMode() const;
 
-    // Gradiente
     void setGradientType(int t);
     int getGradientType() const;
     int getGradientOpacity() const;
@@ -592,14 +539,11 @@ public:
     bool getGradientUseSecondColor() const;
     void setGradientUseSecondColor(bool v);
 
-    // Clonar
     bool isCloneSourceSet() const;
     void resetCloneSource();
 
-    // Herramienta
     void setTool(ToolType tool);
 
-    // Imagen
     void clearImage();
     void crearNuevoLienzo(int w, int h, bool transparent);
     bool abrirImagen(const QString &fileName);
@@ -607,7 +551,6 @@ public:
     bool guardarComoSvg(const QString &fileName);
     bool guardarComoGif(const QString &fileName, int delayMs = 100, int scale = 1);
 
-    // Selección
     void bakeSelection();
     void bakeTextFrame();
     void cancelTextFrame();
@@ -625,14 +568,11 @@ public:
     void pegarClipboard();
     void borrarSeleccion();
 
-    // Drag & Drop
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 
-    // Lienzo
     void cambiarDimensionesLienzo(int nuevoW, int nuevoH);
 
-    // Frames
     const QList<QImage>& getFrames() const;
     int getCurrentFrameIndex() const;
     bool getIsPixelArtMode() const;
