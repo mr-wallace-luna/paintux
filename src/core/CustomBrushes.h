@@ -61,7 +61,6 @@ enum class ShapeType {
     Wave, Spiral, StarMany, Infinity, DiamondStar,
     CustomStamp
 };
-
 enum class DragMode { Continuous, Stamped, Dotted, Scattered, Ribbon };
 enum class RotationMode { Fixed, FollowDirection, Random };
 
@@ -93,7 +92,7 @@ struct BrushSettings {
 };
 
 // ============================================================
-// SHAPE NAME TABLE — Replace Conditional with Polymorphism
+// SHAPE NAME TABLE
 // ============================================================
 class ShapeNames {
 public:
@@ -101,7 +100,6 @@ public:
         const QString n = lookup(s);
         return n.isEmpty() ? QString() : QObject::tr(n.toUtf8().constData());
     }
-
 private:
     static QString lookup(ShapeType s) {
         static const QHash<int, QString> table = {
@@ -153,7 +151,7 @@ private:
 };
 
 // ============================================================
-// SHAPE PATH BUILDER — tabla de builders
+// SHAPE PATH BUILDER
 // ============================================================
 class ShapePathBuilder {
 public:
@@ -163,7 +161,6 @@ public:
         double cy = 0.0;
         double w  = 100.0;
         double h  = 100.0;
-
         Context() {
             cx = r.center().x();
             cy = r.center().y();
@@ -171,7 +168,6 @@ public:
             h  = r.height();
         }
     };
-
     static void appendRegularPolygon(QPainterPath &path, const Context &ctx,
                                      int sides, double startAngle, double radiusFactor) {
         for (int i = 0; i < sides; ++i) {
@@ -183,7 +179,6 @@ public:
         }
         path.closeSubpath();
     }
-
     static void appendStarPolygon(QPainterPath &path, const Context &ctx,
                                   int points, double innerFactor, double startAngle) {
         const int total = points * 2;
@@ -197,11 +192,9 @@ public:
         }
         path.closeSubpath();
     }
-
     static void buildCircle(QPainterPath &p, const Context &c)          { p.addEllipse(c.r); }
     static void buildSquare(QPainterPath &p, const Context &c)          { p.addRect(c.r); }
     static void buildRoundedSquare(QPainterPath &p, const Context &c)   { p.addRoundedRect(c.r, c.w * 0.2, c.h * 0.2); }
-
     static void buildDiamond(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx, c.r.top());
         p.lineTo(c.r.right(), c.cy);
@@ -209,27 +202,23 @@ public:
         p.lineTo(c.r.left(), c.cy);
         p.closeSubpath();
     }
-
     static void buildTriangle(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx, c.r.top());
         p.lineTo(c.r.left(), c.r.bottom());
         p.lineTo(c.r.right(), c.r.bottom());
         p.closeSubpath();
     }
-
     static void buildRightTriangle(QPainterPath &p, const Context &c) {
         p.moveTo(c.r.topLeft());
         p.lineTo(c.r.bottomLeft());
         p.lineTo(c.r.bottomRight());
         p.closeSubpath();
     }
-
     static void buildPentagon(QPainterPath &p, const Context &c) { appendRegularPolygon(p, c, 5, -M_PI / 2.0, 1.0); }
     static void buildHexagon(QPainterPath &p, const Context &c)  { appendRegularPolygon(p, c, 6, -M_PI / 2.0, 1.0); }
     static void buildStar4(QPainterPath &p, const Context &c)    { appendStarPolygon(p, c, 4, 0.35, -M_PI / 2.0); }
     static void buildStar5(QPainterPath &p, const Context &c)    { appendStarPolygon(p, c, 5, 0.45, -M_PI / 2.0); }
     static void buildStar6(QPainterPath &p, const Context &c)    { appendStarPolygon(p, c, 6, 0.5,  -M_PI / 2.0); }
-
     static void buildCross(QPainterPath &p, const Context &c) {
         const double t = c.w * 0.3;
         p.moveTo(c.cx - t / 2, c.r.top());
@@ -246,13 +235,11 @@ public:
         p.lineTo(c.cx - t / 2, c.cy - t / 2);
         p.closeSubpath();
     }
-
     static void buildPlus(QPainterPath &p, const Context &c) {
         const double t = c.w * 0.35;
         p.addRect(c.cx - t / 2, c.r.top(), t, c.h);
         p.addRect(c.r.left(), c.cy - t / 2, c.w, t);
     }
-
     static void buildX(QPainterPath &p, const Context &c) {
         const double t = c.w * 0.25;
         QPolygonF poly;
@@ -271,7 +258,6 @@ public:
         p.addPolygon(poly);
         p.closeSubpath();
     }
-
     static void buildArrow(QPainterPath &p, const Context &c) {
         const double bodyH = c.h * 0.4;
         const double headW = c.w * 0.45;
@@ -284,7 +270,6 @@ public:
         p.lineTo(c.r.left(), c.cy + bodyH / 2);
         p.closeSubpath();
     }
-
     static void buildHeart(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx, c.r.top() + c.h * 0.3);
         p.cubicTo(c.r.left() + c.w * 0.1, c.r.top() - c.h * 0.05,
@@ -294,24 +279,20 @@ public:
                   c.r.right() - c.w * 0.1, c.r.top() - c.h * 0.05,
                   c.cx, c.r.top() + c.h * 0.3);
     }
-
     static void buildLine(QPainterPath &p, const Context &c) {
         const double t = qMax(1.0, c.h * 0.15);
         p.addRect(c.r.left(), c.cy - t / 2, c.w, t);
     }
-
     static void buildPencilTip(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx, c.r.top());
         p.lineTo(c.r.left() + c.w * 0.25, c.r.bottom());
         p.lineTo(c.r.right() - c.w * 0.25, c.r.bottom());
         p.closeSubpath();
     }
-
     static void buildFlatTip(QPainterPath &p, const Context &c) {
         const double fh = c.h * 0.45;
         p.addRoundedRect(c.r.left(), c.cy - fh / 2, c.w, fh, fh * 0.3, fh * 0.3);
     }
-
     static void buildChiselTip(QPainterPath &p, const Context &c) {
         p.moveTo(c.r.left() + c.w * 0.15, c.r.top());
         p.lineTo(c.r.right() - c.w * 0.15, c.r.top());
@@ -319,21 +300,18 @@ public:
         p.lineTo(c.r.left(), c.r.bottom());
         p.closeSubpath();
     }
-
     static void buildLeaf(QPainterPath &p, const Context &c) {
         p.moveTo(c.r.left(), c.r.bottom());
         p.cubicTo(c.r.left(), c.r.top() + c.h * 0.2, c.cx, c.r.top(), c.r.right(), c.r.top());
         p.cubicTo(c.r.right(), c.r.top() + c.h * 0.6, c.cx + c.w * 0.2, c.r.bottom(), c.r.left(), c.r.bottom());
         p.closeSubpath();
     }
-
     static void buildDrop(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx, c.r.top());
         p.cubicTo(c.cx + c.w * 0.4, c.r.top() + c.h * 0.4, c.r.right(), c.cy + c.h * 0.15, c.cx, c.r.bottom());
         p.cubicTo(c.r.left(), c.cy + c.h * 0.15, c.cx - c.w * 0.4, c.r.top() + c.h * 0.4, c.cx, c.r.top());
         p.closeSubpath();
     }
-
     static void buildCrescent(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx + c.w * 0.15, c.r.top());
         p.arcTo(c.r, 270, 180);
@@ -342,19 +320,16 @@ public:
                   c.cx + c.w * 0.15, c.r.top());
         p.closeSubpath();
     }
-
     static void buildRing(QPainterPath &p, const Context &c) {
         p.addEllipse(c.r);
         const double inset = c.w * 0.2;
         p.addEllipse(c.r.adjusted(inset, inset, -inset, -inset));
     }
-
     static void buildHalfCircle(QPainterPath &p, const Context &c) {
         p.moveTo(c.r.left(), c.cy);
         p.arcTo(c.r, 180, 180);
         p.closeSubpath();
     }
-
     static void buildSparkle(QPainterPath &p, const Context &c) {
         const double inner = 0.2;
         p.moveTo(c.cx, c.r.top());
@@ -364,7 +339,6 @@ public:
         p.quadTo(c.cx - c.w * inner, c.cy - c.h * inner, c.cx, c.r.top());
         p.closeSubpath();
     }
-
     static void buildClover(QPainterPath &p, const Context &c) {
         const double lr = c.w * 0.22;
         p.addEllipse(c.cx - lr, c.cy - lr * 2, lr * 2, lr * 2);
@@ -372,7 +346,6 @@ public:
         p.addEllipse(c.cx, c.cy - lr, lr * 2, lr * 2);
         p.addEllipse(c.cx - lr, c.cy, lr * 2, lr * 2);
     }
-
     static void buildGear(QPainterPath &p, const Context &c) {
         const int teeth = 8;
         const double outerR = c.w / 2.0;
@@ -389,7 +362,6 @@ public:
         const double holeR = c.w * 0.12;
         p.addEllipse(c.cx - holeR, c.cy - holeR, holeR * 2, holeR * 2);
     }
-
     static void buildLightning(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx + c.w * 0.08, c.r.top());
         p.lineTo(c.cx - c.w * 0.28, c.cy + c.h * 0.05);
@@ -400,7 +372,6 @@ public:
         p.lineTo(c.cx + c.w * 0.18, c.r.top());
         p.closeSubpath();
     }
-
     static void buildMusicNote(QPainterPath &p, const Context &c) {
         const double headR = c.w * 0.13;
         p.addEllipse(QPointF(c.cx - c.w * 0.10, c.cy + c.h * 0.28), headR, headR * 0.8);
@@ -415,7 +386,6 @@ public:
                   c.cx + c.w * 0.07, c.r.top() + c.h * 0.18);
         p.closeSubpath();
     }
-
     static void buildFlower(QPainterPath &p, const Context &c) {
         const int petals = 5;
         const double petalR = c.w * 0.20;
@@ -427,7 +397,6 @@ public:
         }
         p.addEllipse(QPointF(c.cx, c.cy), c.w * 0.10, c.h * 0.10);
     }
-
     static void buildButterfly(QPainterPath &p, const Context &c) {
         p.addEllipse(QPointF(c.cx, c.cy), c.w * 0.04, c.h * 0.30);
         p.moveTo(c.cx - c.w * 0.04, c.cy - c.h * 0.05);
@@ -451,7 +420,6 @@ public:
                   c.cx + c.w * 0.04, c.cy + c.h * 0.30);
         p.closeSubpath();
     }
-
     static void buildCloud(QPainterPath &p, const Context &c) {
         p.addEllipse(QPointF(c.cx - c.w * 0.20, c.cy + c.h * 0.05), c.w * 0.20, c.h * 0.20);
         p.addEllipse(QPointF(c.cx + c.w * 0.20, c.cy + c.h * 0.05), c.w * 0.22, c.h * 0.22);
@@ -459,7 +427,6 @@ public:
         p.addEllipse(QPointF(c.cx + c.w * 0.15, c.cy - c.h * 0.05), c.w * 0.20, c.h * 0.20);
         p.addEllipse(QPointF(c.cx, c.cy + c.h * 0.15), c.w * 0.30, c.h * 0.15);
     }
-
     static void buildSpeech(QPainterPath &p, const Context &c) {
         const double rad = c.w * 0.10;
         p.addRoundedRect(QRectF(c.r.left(), c.r.top(), c.w, c.h * 0.75), rad, rad);
@@ -468,7 +435,6 @@ public:
         p.lineTo(c.cx + c.w * 0.05, c.r.top() + c.h * 0.75);
         p.closeSubpath();
     }
-
     static void buildLocationPin(QPainterPath &p, const Context &c) {
         p.moveTo(c.cx, c.r.bottom());
         p.cubicTo(c.cx - c.w * 0.4, c.cy + c.h * 0.1, c.r.left(), c.r.top(), c.cx, c.r.top());
@@ -477,7 +443,6 @@ public:
         const double holeR = c.w * 0.12;
         p.addEllipse(QPointF(c.cx, c.cy - c.h * 0.05), holeR, holeR);
     }
-
     static void buildWave(QPainterPath &p, const Context &c) {
         p.moveTo(c.r.left(), c.cy);
         p.cubicTo(c.r.left() + c.w * 0.15, c.r.top(), c.r.left() + c.w * 0.35, c.r.top(), c.cx, c.cy);
@@ -486,7 +451,6 @@ public:
         p.cubicTo(c.r.left() + c.w * 0.35, c.cy - c.h * 0.02, c.r.left() + c.w * 0.15, c.cy - c.h * 0.02, c.r.left(), c.cy);
         p.closeSubpath();
     }
-
     static void buildSpiral(QPainterPath &p, const Context &c) {
         const int steps = 80;
         const double turns = 3.0;
@@ -501,7 +465,6 @@ public:
             else        p.lineTo(px, py);
         }
     }
-
     static void buildStarMany(QPainterPath &p, const Context &c) {
         const int points = 16;
         const double outerR = c.w * 0.5;
@@ -516,7 +479,6 @@ public:
         }
         p.closeSubpath();
     }
-
     static void buildInfinity(QPainterPath &p, const Context &c) {
         const double rW = c.w * 0.28;
         const double rH = c.h * 0.28;
@@ -533,7 +495,6 @@ public:
         center.addEllipse(QPointF(c.cx, c.cy), rW * 0.18, rH * 0.18);
         p = p.united(center);
     }
-
     static void buildDiamondStar(QPainterPath &p, const Context &c) {
         const double outerX = c.w * 0.5;
         const double outerY = c.h * 0.5;
@@ -549,9 +510,7 @@ public:
         p.lineTo(c.cx - innerX, c.cy - innerY);
         p.closeSubpath();
     }
-
     using BuilderFn = void(*)(QPainterPath&, const Context&);
-
     static BuilderFn builderFor(ShapeType s) {
         static const QHash<int, BuilderFn> table = {
             {(int)ShapeType::Circle,        &buildCircle},
@@ -598,7 +557,6 @@ public:
         auto it = table.constFind((int)s);
         return (it != table.constEnd()) ? it.value() : nullptr;
     }
-
     static QPainterPath build(ShapeType shape) {
         QPainterPath path;
         BuilderFn fn = builderFor(shape);
@@ -610,22 +568,14 @@ public:
 };
 
 // ============================================================
-// GEOMETRY DRAWER — draw dispatch con tabla de funciones
+// GEOMETRY DRAWER
 // ============================================================
 class GeometryDrawer {
 public:
-    // ------------------------------------------------------------
-    // Tipos de firma de dibujo por herramienta
-    // ------------------------------------------------------------
     using PointDrawFn = void(*)(QPainter&, const QPoint&, const QPoint&);
     using RectDrawFn  = void(*)(QPainter&, const QRect&);
-
-    // ------------------------------------------------------------
-    // Entrada pública — dispatcher delgado
-    // ------------------------------------------------------------
     static void draw(QPainter &painter, const QPoint &p1, const QPoint &p2, ToolType tool) {
         const QRect r = QRect(p1, p2).normalized();
-
         if (PointDrawFn pfn = pointFnFor(tool)) {
             pfn(painter, p1, p2);
             return;
@@ -635,11 +585,7 @@ public:
             return;
         }
     }
-
 private:
-    // ------------------------------------------------------------
-    // Tablas de dispatch
-    // ------------------------------------------------------------
     static PointDrawFn pointFnFor(ToolType tool) {
         static const QHash<int, PointDrawFn> table = {
             {(int)ToolLine,          &drawLinePts},
@@ -650,7 +596,6 @@ private:
         auto it = table.constFind((int)tool);
         return (it != table.constEnd()) ? it.value() : nullptr;
     }
-
     static RectDrawFn rectFnFor(ToolType tool) {
         static const QHash<int, RectDrawFn> table = {
             {(int)ToolRectangle,    &drawRectangleR},
@@ -667,14 +612,9 @@ private:
         auto it = table.constFind((int)tool);
         return (it != table.constEnd()) ? it.value() : nullptr;
     }
-
-    // ------------------------------------------------------------
-    // Implementaciones — firma (QPainter, QPoint, QPoint)
-    // ------------------------------------------------------------
     static void drawLinePts(QPainter &p, const QPoint &a, const QPoint &b) {
         p.drawLine(a, b);
     }
-
     static void drawTrianglePts(QPainter &p, const QPoint &a, const QPoint &b) {
         QPolygon t;
         t << QPoint((a.x() + b.x()) / 2, a.y())
@@ -682,13 +622,11 @@ private:
           << QPoint(b.x(), b.y());
         p.drawPolygon(t);
     }
-
     static void drawRightTrianglePts(QPainter &p, const QPoint &a, const QPoint &b) {
         QPolygon t;
         t << a << QPoint(a.x(), b.y()) << b;
         p.drawPolygon(t);
     }
-
     static void drawDiamondPts(QPainter &p, const QPoint &a, const QPoint &b) {
         QPolygon t;
         t << QPoint((a.x() + b.x()) / 2, a.y())
@@ -697,30 +635,21 @@ private:
           << QPoint(a.x(), (a.y() + b.y()) / 2);
         p.drawPolygon(t);
     }
-
-    // ------------------------------------------------------------
-    // Implementaciones — firma (QPainter, QRect)
-    // ------------------------------------------------------------
     static void drawRectangleR(QPainter &p, const QRect &r) {
         p.drawRect(r);
     }
-
     static void drawEllipseR(QPainter &p, const QRect &r) {
         p.drawEllipse(r);
     }
-
     static void drawRoundRectR(QPainter &p, const QRect &r) {
         p.drawRoundedRect(r, 12, 12);
     }
-
     static void drawPentagonR(QPainter &p, const QRect &r) {
         drawRegularPolygonR(p, r, 5);
     }
-
     static void drawHexagonR(QPainter &p, const QRect &r) {
         drawRegularPolygonR(p, r, 6);
     }
-
     static void drawRegularPolygonR(QPainter &p, const QRect &r, int sides) {
         QPolygon poly;
         for (int i = 0; i < sides; ++i) {
@@ -730,7 +659,6 @@ private:
         }
         p.drawPolygon(poly);
     }
-
     static void drawStarR(QPainter &p, const QRect &r) {
         QPolygon poly;
         const int points = 5;
@@ -742,15 +670,12 @@ private:
         }
         p.drawPolygon(poly);
     }
-
     static void drawArrowRightR(QPainter &p, const QRect &r) {
         drawArrowR(p, r, true);
     }
-
     static void drawArrowLeftR(QPainter &p, const QRect &r) {
         drawArrowR(p, r, false);
     }
-
     static void drawArrowR(QPainter &p, const QRect &r, bool right) {
         const int ym = r.top() + r.height() / 2;
         const int xb = right ? r.left() + r.width() * 0.55 : r.left() + r.width() * 0.45;
@@ -765,7 +690,6 @@ private:
              << QPoint(right ? r.left() : r.right(), ym + tk);
         p.drawPolygon(poly);
     }
-
     static void drawHeartR(QPainter &p, const QRect &r) {
         QPainterPath path;
         path.moveTo(r.left() + r.width() / 2, r.top() + r.height() * 0.28);
@@ -777,7 +701,6 @@ private:
                      r.left() + r.width() / 2, r.top() + r.height() * 0.28);
         p.drawPath(path);
     }
-
     static void drawCubeR(QPainter &p, const QRect &r) {
         int offset = qMin(r.width(), r.height()) * 0.3;
         if (offset < 4) offset = 4;
@@ -797,13 +720,9 @@ private:
 // ============================================================
 class PaintEngine {
 public:
-    // ------------------------------------------------------------
-    // Nombres de figuras — delega en ShapeNames
-    // ------------------------------------------------------------
     static QString shapeName(ShapeType s) {
         return ShapeNames::name(s);
     }
-
     static QList<ShapeType> allShapes() {
         return {
             ShapeType::Circle, ShapeType::Square, ShapeType::RoundedSquare, ShapeType::Diamond,
@@ -820,21 +739,15 @@ public:
             ShapeType::DiamondStar
         };
     }
-
-    // ------------------------------------------------------------
-    // baseShapePath — delega en ShapePathBuilder
-    // ------------------------------------------------------------
     static QPainterPath baseShapePath(ShapeType shape) {
         static QHash<int, QPainterPath> cache;
         const int key = (int)shape;
         auto it = cache.constFind(key);
         if (it != cache.constEnd()) return it.value();
-
         QPainterPath path = ShapePathBuilder::build(shape);
         it = cache.insert(key, path);
         return it.value();
     }
-
     static QPainterPath transformedShapePath(ShapeType shape, const QRectF &r) {
         if (r.width() <= 0.0 || r.height() <= 0.0) return QPainterPath();
         if (shape == ShapeType::CustomStamp) return QPainterPath();
@@ -843,14 +756,9 @@ public:
         t.scale(r.width() / 100.0, r.height() / 100.0);
         return t.map(baseShapePath(shape));
     }
-
     static QPainterPath shapePath(ShapeType shape, const QRectF &r) {
         return transformedShapePath(shape, r);
     }
-
-    // ------------------------------------------------------------
-    // Tintado
-    // ------------------------------------------------------------
     static QImage tintImage(const QImage &src, const QColor &color) {
         if (src.isNull()) return src;
         QImage result = src.convertToFormat(QImage::Format_ARGB32);
@@ -868,10 +776,6 @@ public:
         }
         return result;
     }
-
-    // ------------------------------------------------------------
-    // Helpers de aspect ratio
-    // ------------------------------------------------------------
     static QRectF aspectRect(double cx, double cy, double size, double aspectRatio) {
         QRectF target(cx - size / 2.0, cy - size / 2.0, size, size);
         if (aspectRatio < 1.0) {
@@ -883,7 +787,6 @@ public:
         }
         return target;
     }
-
     static QRectF aspectRectInCanvas(double canvasW, double canvasH,
                                      double size, double aspectRatio) {
         QRectF target((canvasW - size) / 2.0, (canvasH - size) / 2.0, size, size);
@@ -896,14 +799,9 @@ public:
         }
         return target;
     }
-
-    // ------------------------------------------------------------
-    // Dibujar primitiva
-    // ------------------------------------------------------------
     static void drawShapePrimitive(QPainter &painter, ShapeType shape, const QRectF &r,
                                    const QColor &color, const QImage &customImage = QImage()) {
         if (r.width() <= 0.0 || r.height() <= 0.0) return;
-
         if (shape == ShapeType::CustomStamp) {
             if (customImage.isNull()) return;
             painter.save();
@@ -912,7 +810,6 @@ public:
             painter.restore();
             return;
         }
-
         painter.save();
         painter.setPen(Qt::NoPen);
         painter.setBrush(color);
@@ -921,11 +818,9 @@ public:
         painter.drawPath(baseShapePath(shape));
         painter.restore();
     }
-
     static void drawShapeOutline(QPainter &painter, ShapeType shape, const QRectF &r,
                                  const QImage &customImage = QImage()) {
         if (r.width() <= 0.0 || r.height() <= 0.0) return;
-
         if (shape == ShapeType::CustomStamp) {
             if (customImage.isNull()) return;
             painter.save();
@@ -936,16 +831,11 @@ public:
         }
         painter.drawPath(transformedShapePath(shape, r));
     }
-
-    // ------------------------------------------------------------
-    // Silueta del pincel
-    // ------------------------------------------------------------
     static void drawBrushSilhouette(QPainter &painter, const BrushSettings &config,
                                     double size, const QPointF &center) {
         painter.save();
         painter.translate(center);
         painter.rotate(config.angle);
-
         if (!config.shapeElements.isEmpty()) {
             drawCompositeSilhouette(painter, config, size);
         } else {
@@ -953,14 +843,12 @@ public:
         }
         painter.restore();
     }
-
     static void drawCompositeSilhouette(QPainter &painter, const BrushSettings &config, double size) {
         const double spread = size * 1.5;
         double scaleX = 1.0, scaleY = 1.0;
         if (config.aspectRatio < 1.0) scaleY = config.aspectRatio;
         else if (config.aspectRatio > 1.0) scaleX = config.aspectRatio;
         painter.scale(scaleX, scaleY);
-
         for (const ShapeElement &el : config.shapeElements) {
             const double elCx = el.offsetX * spread;
             const double elCy = el.offsetY * spread;
@@ -974,7 +862,6 @@ public:
             painter.restore();
         }
     }
-
     static void drawSingleSilhouette(QPainter &painter, const BrushSettings &config, double size) {
         QRectF shapeRect(-size / 2.0, -size / 2.0, size, size);
         if (config.aspectRatio < 1.0) {
@@ -986,10 +873,6 @@ public:
         }
         drawShapeOutline(painter, config.shape, shapeRect, config.customStampImage);
     }
-
-    // ------------------------------------------------------------
-    // Breath factor
-    // ------------------------------------------------------------
     static double computeBreathFactor(double accumulatedLength, int brushSize, int flow) {
         if (flow >= 100) return 1.0;
         if (brushSize < 1) brushSize = 1;
@@ -1005,17 +888,11 @@ public:
         }
         return qBound(0.05, factor, 1.0);
     }
-
-    // ------------------------------------------------------------
-    // Granulación
-    // ------------------------------------------------------------
     static void applyGranulation(QPainter &p, int canvasW, int canvasH, double angle) {
         p.setCompositionMode(QPainter::CompositionMode_SourceAtop);
         p.setRenderHint(QPainter::Antialiasing, false);
-
         const double grainAngle = angle * M_PI / 180.0 + M_PI / 5.0;
         const int numVeins = qMax(canvasW, canvasH) * 3;
-
         for (int i = 0; i < numVeins; ++i) {
             const int cx = QRandomGenerator::global()->bounded(canvasW);
             const int cy = QRandomGenerator::global()->bounded(canvasH);
@@ -1031,7 +908,6 @@ public:
                        cx + (int)(cos(a) * len),
                        cy + (int)(sin(a) * len));
         }
-
         const int numSpecks = (canvasW * canvasH) / 20;
         for (int i = 0; i < numSpecks; ++i) {
             const int nx = QRandomGenerator::global()->bounded(canvasW);
@@ -1043,13 +919,8 @@ public:
             p.setPen(speckColor);
             p.drawPoint(nx, ny);
         }
-
         p.setCompositionMode(QPainter::CompositionMode_SourceOver);
     }
-
-    // ------------------------------------------------------------
-    // Pintar shape con o sin gradiente
-    // ------------------------------------------------------------
     static void paintShapeWithColor(QPainter &p, ShapeType shape, const QRectF &r,
                                     const QColor &color, bool doGradient,
                                     const QColor &c1, const QColor &c2) {
@@ -1064,10 +935,6 @@ public:
             drawShapePrimitive(p, shape, r, color);
         }
     }
-
-    // ------------------------------------------------------------
-    // Stamp simple
-    // ------------------------------------------------------------
     static void paintSingleStampShape(QPainter &p, const BrushSettings &config,
                                       const QColor &baseColor, const QColor &secondColor,
                                       double alpha, int canvasW, int canvasH,
@@ -1075,14 +942,11 @@ public:
         QRectF shapeRect(pad, pad, size, size);
         if (config.aspectRatio != 1.0)
             shapeRect = aspectRectInCanvas(canvasW, canvasH, size, config.aspectRatio);
-
         p.save();
         p.translate(canvasW / 2.0, canvasH / 2.0);
         p.rotate(config.angle);
         p.translate(-canvasW / 2.0, -canvasH / 2.0);
-
         const bool doGradient = config.mixSecondColor && secondColor.isValid();
-
         if (config.shape == ShapeType::CustomStamp) {
             if (!config.customStampImage.isNull()) {
                 p.setOpacity(qBound(0.0, alpha, 1.0));
@@ -1096,7 +960,6 @@ public:
         } else {
             QColor stampColor = baseColor;
             stampColor.setAlphaF(qBound(0.0, alpha, 1.0));
-
             if (config.shape == ShapeType::Circle) {
                 QRadialGradient grad(canvasW / 2.0, canvasH / 2.0, size / 2.0);
                 QColor edge = stampColor; edge.setAlpha(0);
@@ -1112,10 +975,6 @@ public:
         }
         p.restore();
     }
-
-    // ------------------------------------------------------------
-    // Stamp compuesto
-    // ------------------------------------------------------------
     static void paintCompositeStamp(QPainter &p, const BrushSettings &config,
                                     const QColor &baseColor, const QColor &secondColor,
                                     double alpha, double size) {
@@ -1123,17 +982,14 @@ public:
         const double centerY = p.device()->height() / 2.0;
         const double spread = size * 1.5;
         const bool doGradient = config.mixSecondColor && secondColor.isValid();
-
         p.save();
         p.translate(centerX, centerY);
         p.rotate(config.angle);
-
         for (const ShapeElement &el : config.shapeElements) {
             paintCompositeElement(p, el, baseColor, secondColor, alpha, spread, doGradient);
         }
         p.restore();
     }
-
     static void paintCompositeElement(QPainter &p, const ShapeElement &el,
                                       const QColor &baseColor, const QColor &secondColor,
                                       double alpha, double spread, bool doGradient) {
@@ -1142,12 +998,10 @@ public:
         const double elSize = el.scale * (spread / 1.5);
         const QRectF r(elCx - elSize / 2, elCy - elSize / 2, elSize, elSize);
         const double elAlpha = alpha * (el.opacity / 100.0);
-
         p.save();
         p.translate(elCx, elCy);
         p.rotate(el.rotation);
         p.translate(-elCx, -elCy);
-
         if (el.shape == ShapeType::CustomStamp) {
             if (!el.customImage.isNull()) {
                 p.setOpacity(qBound(0.0, elAlpha, 1.0));
@@ -1165,17 +1019,12 @@ public:
         }
         p.restore();
     }
-
-    // ------------------------------------------------------------
-    // generateBrushStamp
-    // ------------------------------------------------------------
     static QImage generateBrushStamp(const BrushSettings &config, const QColor &baseColor,
                                      int penOpacity, bool pixelArt,
                                      const QColor &secondColor = QColor()) {
         const int size = qMax(1, config.size);
         const int pad = 6;
         const bool composite = !config.shapeElements.isEmpty();
-
         int canvasW, canvasH;
         if (composite) {
             const int baseSize = size * 6 + pad * 2;
@@ -1189,16 +1038,12 @@ public:
             if (config.aspectRatio > 1.0)
                 canvasW = (int)(size * config.aspectRatio) + pad * 2;
         }
-
         QImage stamp(canvasW, canvasH, QImage::Format_ARGB32);
         stamp.fill(Qt::transparent);
-
         QPainter p(&stamp);
         p.setRenderHint(QPainter::Antialiasing, !pixelArt);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
         const double alpha = (config.opacity / 100.0) * (penOpacity / 255.0);
-
         if (!composite && config.shape == ShapeType::CustomStamp) {
             if (config.customStampImage.isNull()) { p.end(); return stamp; }
             const double cx = canvasW / 2.0, cy = canvasH / 2.0;
@@ -1208,29 +1053,21 @@ public:
             p.end();
             return stamp;
         }
-
         if (composite) {
             paintCompositeStamp(p, config, baseColor, secondColor, alpha, size);
         } else {
             paintSingleStampShape(p, config, baseColor, secondColor, alpha, canvasW, canvasH, size, pad);
         }
-
         if (config.granulation)
             applyGranulation(p, canvasW, canvasH, config.angle);
-
         p.end();
         return stamp;
     }
-
-    // ------------------------------------------------------------
-    // Lápiz grafito
-    // ------------------------------------------------------------
     static void applyGraphitePencil(QImage &image, const QPoint &p1, const QPoint &p2,
                                     const QColor &color, int width, int opacity) {
         if (image.isNull()) return;
         QPainter painter(&image);
         painter.setRenderHint(QPainter::Antialiasing, true);
-
         const double dx = p2.x() - p1.x();
         const double dy = p2.y() - p1.y();
         const double dist = sqrt(dx * dx + dy * dy);
@@ -1238,7 +1075,6 @@ public:
         const double softness = 0.75;
         const double coreRadius = width * (0.8 + softness * 0.7);
         const double strokeAngle = atan2(dy, dx);
-
         for (int i = 0; i <= steps; ++i) {
             const double t = (double)i / steps;
             const double cx = p1.x() + t * dx;
@@ -1250,7 +1086,6 @@ public:
         }
         painter.end();
     }
-
     static void drawGrainPoint(QPainter &painter, const QImage &image, const QColor &color,
                                int opacity, double softness, double coreRadius,
                                double strokeAngle, double cx, double cy) {
@@ -1259,7 +1094,6 @@ public:
         const int gx = (int)(cx + cos(ang) * r);
         const int gy = (int)(cy + sin(ang) * r);
         if (gx < 0 || gx >= image.width() || gy < 0 || gy >= image.height()) return;
-
         const double pressure = 1.0 - (r / qMax(0.001, coreRadius));
         QColor gc = color;
         int h, s, l, a;
@@ -1272,17 +1106,12 @@ public:
         const int glen = 1 + QRandomGenerator::global()->bounded(3);
         painter.drawLine(gx, gy, gx + (int)(cos(ang) * glen), gy + (int)(sin(ang) * glen));
     }
-
-    // ------------------------------------------------------------
-    // Goma
-    // ------------------------------------------------------------
     static void applyEraserLine(QImage &image, const QPoint &p1, const QPoint &p2,
                                 int width, bool softEdge) {
         if (image.isNull()) return;
         QPainter painter(&image);
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.setCompositionMode(QPainter::CompositionMode_Clear);
-
         if (softEdge) {
             eraseSoft(painter, p1, p2, width);
         } else {
@@ -1291,7 +1120,6 @@ public:
         }
         painter.end();
     }
-
     static void eraseSoft(QPainter &painter, const QPoint &p1, const QPoint &p2, int width) {
         const double dx = p2.x() - p1.x();
         const double dy = p2.y() - p1.y();
@@ -1310,10 +1138,6 @@ public:
             painter.drawEllipse(cx - width, cy - width, width * 2, width * 2);
         }
     }
-
-    // ------------------------------------------------------------
-    // Muestreo de color
-    // ------------------------------------------------------------
     static QColor sampleCanvasColor(const QImage &image, const QPoint &pos, int radius) {
         if (image.isNull()) return QColor();
         const int x0 = qMax(0, pos.x() - radius);
@@ -1321,13 +1145,11 @@ public:
         const int x1 = qMin(image.width() - 1, pos.x() + radius);
         const int y1 = qMin(image.height() - 1, pos.y() + radius);
         if (x0 > x1 || y0 > y1) return QColor();
-
         long long r = 0, g = 0, b = 0;
         int count = 0;
         int step = 1;
         if (radius > 8) step = 2;
         if (radius > 16) step = 3;
-
         if (image.format() == QImage::Format_ARGB32) {
             for (int y = y0; y <= y1; y += step) {
                 const QRgb *line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
@@ -1344,29 +1166,20 @@ public:
                 }
             }
         }
-
         if (count == 0) return QColor();
         return QColor((int)(r / count), (int)(g / count), (int)(b / count), 255);
     }
-
-    // ------------------------------------------------------------
-    // Wet mix
-    // ------------------------------------------------------------
     static QImage wetMixStamp(const QImage &stamp, const QColor &canvasColor, double wetAmount) {
         QImage result = stamp.copy();
         if (result.isNull()) return result;
-
         const double t = qBound(0.0, wetAmount / 100.0, 1.0);
         if (t <= 0.001) return result;
-
         if (result.format() != QImage::Format_ARGB32)
             result = result.convertToFormat(QImage::Format_ARGB32);
-
         const int cr = canvasColor.red();
         const int cg = canvasColor.green();
         const int cb = canvasColor.blue();
         const double inv = 1.0 - t;
-
         for (int y = 0; y < result.height(); ++y) {
             QRgb *line = reinterpret_cast<QRgb*>(result.scanLine(y));
             for (int x = 0; x < result.width(); ++x) {
@@ -1382,14 +1195,9 @@ public:
         }
         return result;
     }
-
-    // ------------------------------------------------------------
-    // Dibujar stamp puntual
-    // ------------------------------------------------------------
     static void drawStampAt(QImage &image, const QPoint &pos, const QImage &drawStamp,
                             double angle, double opacity, double scale) {
         if (image.isNull() || drawStamp.isNull()) return;
-
         QPainter painter(&image);
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
@@ -1403,10 +1211,6 @@ public:
         painter.restore();
         painter.end();
     }
-
-    // ------------------------------------------------------------
-    // Aplicar stamp puntual
-    // ------------------------------------------------------------
     static void applyCustomBrushStroke(QImage &image, const QPoint &pos,
                                        const QImage &stamp, const BrushSettings &config,
                                        double mouseSensitivity, double extraAngle = 0.0,
@@ -1417,12 +1221,10 @@ public:
                                        double taperFactor = 1.0) {
         Q_UNUSED(secondColor);
         if (image.isNull() || stamp.isNull()) return;
-
         const QPoint scattered = computeScatterOffset(pos, config, mouseSensitivity);
         const double drawAngle = computeDrawAngle(config, extraAngle);
         const double drawOpacity = computeDrawOpacity(config, opacityScale, taperFactor);
         const double scale = computeDrawScale(config, sizeScale, taperFactor);
-
         QImage drawStamp = stamp;
         if (config.wetMix && baseColor.isValid()) {
             const int sampleRadius = qMax(2, config.size / 2);
@@ -1432,10 +1234,8 @@ public:
             if (sampled.isValid())
                 drawStamp = wetMixStamp(stamp, sampled, config.wetAmount);
         }
-
         drawStampAt(image, scattered, drawStamp, drawAngle, drawOpacity, scale);
     }
-
     static QPoint computeScatterOffset(const QPoint &pos, const BrushSettings &config,
                                        double mouseSensitivity) {
         if (config.scatter <= 0) return pos;
@@ -1443,7 +1243,6 @@ public:
         return QPoint(pos.x() + QRandomGenerator::global()->bounded(-scatterAmount, scatterAmount + 1),
                       pos.y() + QRandomGenerator::global()->bounded(-scatterAmount, scatterAmount + 1));
     }
-
     static double computeDrawAngle(const BrushSettings &config, double extraAngle) {
         double angle = config.angle + extraAngle;
         if (config.rotationMode == RotationMode::Random)
@@ -1452,7 +1251,6 @@ public:
             angle += QRandomGenerator::global()->bounded(-config.angleJitter, config.angleJitter + 1);
         return angle;
     }
-
     static double computeDrawOpacity(const BrushSettings &config, double opacityScale,
                                      double taperFactor) {
         double opacity = config.isAirbrush ? 0.3 : 1.0;
@@ -1464,7 +1262,6 @@ public:
         }
         return opacity;
     }
-
     static double computeDrawScale(const BrushSettings &config, double sizeScale,
                                    double taperFactor) {
         double scale = sizeScale * taperFactor;
@@ -1474,10 +1271,6 @@ public:
         }
         return scale;
     }
-
-    // ------------------------------------------------------------
-    // Spacing y ribbon
-    // ------------------------------------------------------------
     static double computeSpacing(const BrushSettings &config, double mouseSensitivity) {
         double baseSpacing = qMax(1.0, (config.size * qMax(1, 6 - config.density)) / 100.0);
         switch (config.dragMode) {
@@ -1489,7 +1282,6 @@ public:
         baseSpacing *= (2.0 - mouseSensitivity);
         return qMax(1.0, baseSpacing);
     }
-
     static void applyRibbonLine(QImage &image, const QPointF &from, const QPointF &to,
                                 const BrushSettings &config, const QColor &baseColor,
                                 QPointF &lastPoint) {
@@ -1503,10 +1295,6 @@ public:
         painter.end();
         lastPoint = to;
     }
-
-    // ------------------------------------------------------------
-    // Aplicar línea de pincel
-    // ------------------------------------------------------------
     static void applyCustomBrushLine(QImage &image, const QPointF &from, const QPointF &to,
                                      const QImage &stamp, const BrushSettings &config,
                                      double mouseSensitivity, QPointF &lastPoint,
@@ -1517,29 +1305,22 @@ public:
                                      double accumulatedLength = 0.0) {
         Q_UNUSED(totalStrokeLength);
         if (image.isNull() || stamp.isNull()) return;
-
         const double dist = sqrt(pow(to.x() - from.x(), 2) + pow(to.y() - from.y(), 2));
         if (dist < 0.5) return;
-
         if (config.dragMode == DragMode::Ribbon) {
             applyRibbonLine(image, from, to, config, baseColor, lastPoint);
             return;
         }
-
         const double baseSpacing = computeSpacing(config, mouseSensitivity);
         if (dist < baseSpacing) return;
-
         const QImage lineStamp = resolveLineStamp(image, from, stamp, config,
                                                   baseColor, fallbackCanvasColor);
         const double dirAngle = atan2(to.y() - from.y(), to.x() - from.x()) * 180.0 / M_PI;
-
         paintSegmentsAlongLine(image, from, to, dist, lineStamp, config,
                                dirAngle, secondColor, fallbackCanvasColor,
                                accumulatedLength, baseSpacing);
-
         lastPoint = to;
     }
-
     static QImage resolveLineStamp(const QImage &image, const QPointF &from,
                                    const QImage &stamp, const BrushSettings &config,
                                    const QColor &baseColor,
@@ -1552,7 +1333,6 @@ public:
             return wetMixStamp(stamp, sampled, config.wetAmount);
         return stamp;
     }
-
     static void paintSegmentsAlongLine(QImage &image, const QPointF &from, const QPointF &to,
                                        double dist, const QImage &lineStamp,
                                        const BrushSettings &config, double dirAngle,
@@ -1564,12 +1344,10 @@ public:
             const double t = (double)s / steps;
             const int cx = (int)(from.x() + t * (to.x() - from.x()));
             const int cy = (int)(from.y() + t * (to.y() - from.y()));
-
             const double taperFactor = computeTaperFactor(config, accumulatedLength, dist, t);
             const double extraAngle = (config.rotationMode == RotationMode::FollowDirection) ? dirAngle : 0.0;
             const double sizeScale = (config.dragMode == DragMode::Dotted) ? 0.7 : 1.0;
             const int densityCount = qBound(1, config.density, 20);
-
             for (int d = 0; d < densityCount; ++d) {
                 const QPoint offset = computeDensityOffset(config, densityCount);
                 applyCustomBrushStroke(image, QPoint(cx + offset.x(), cy + offset.y()),
@@ -1578,14 +1356,12 @@ public:
             }
         }
     }
-
     static double computeTaperFactor(const BrushSettings &config, double accumulatedLength,
                                      double dist, double t) {
         if (config.flow >= 100) return 1.0;
         const double currentLen = accumulatedLength + t * dist;
         return computeBreathFactor(currentLen, config.size, config.flow);
     }
-
     static QPoint computeDensityOffset(const BrushSettings &config, int densityCount) {
         int dx = 0, dy = 0;
         if (densityCount > 1) {
@@ -1600,10 +1376,6 @@ public:
         }
         return QPoint(dx, dy);
     }
-
-    // ------------------------------------------------------------
-    // Wrappers de retoque
-    // ------------------------------------------------------------
     static void applyBlur(QImage &image, const QPoint &pos, int radius) {
         RetouchTools::applyBlur(image, pos, radius);
     }
@@ -1614,18 +1386,12 @@ public:
                                 double sensitivity, int opacity) {
         RetouchTools::applyShadowBurn(image, pos, radius, sensitivity, opacity);
     }
-
-    // ------------------------------------------------------------
-    // Geometría (delega en GeometryDrawer)
-    // ------------------------------------------------------------
     static void drawGeometry(QPainter &painter, const QPoint &p1, const QPoint &p2, ToolType tool) {
         GeometryDrawer::draw(painter, p1, p2, tool);
     }
-
     static void floodFill(QImage &image, const QPoint &start, QColor fillCol) {
         floodFillPixelArt(image, start, fillCol);
     }
-
     static QImage magicWandMask(const QImage &image, const QPoint &pos, int tolerance) {
         return MagicWandTools::magicWandMask(image, pos, tolerance);
     }
@@ -1635,7 +1401,6 @@ public:
 // PRESETS ARTÍSTICOS
 // ============================================================
 namespace ArtisticPresets {
-
 inline BrushSettings makePreset(int size, ShapeType shape, DragMode drag, RotationMode rot,
                                 int opacity, int scatter, double angle, int density, int flow,
                                 int sizeJitter, int angleJitter, int opacityJitter,
@@ -1661,7 +1426,6 @@ inline BrushSettings makePreset(int size, ShapeType shape, DragMode drag, Rotati
     s.isAirbrush = isAirbrush;
     return s;
 }
-
 inline BrushSettings watercolor() {
     return makePreset(40, ShapeType::Circle, DragMode::Continuous, RotationMode::Random,
                       2, 25, 0.0, 4, 100, 30, 45, 25, 1.0, true, 50, false);
@@ -1694,7 +1458,6 @@ inline BrushSettings sprayCan() {
     return makePreset(20, ShapeType::Circle, DragMode::Scattered, RotationMode::Random,
                       70, 40, 0.0, 3, 100, 50, 180, 40, 1.0, false, 50, false, true);
 }
-
 inline BrushSettings presetForTool(ToolType t) {
     switch (t) {
     case ToolWatercolor:  return watercolor();
@@ -1708,14 +1471,12 @@ inline BrushSettings presetForTool(ToolType t) {
     default:              return softBrush();
     }
 }
-
 inline bool isArtisticTool(ToolType t) {
     return t == ToolWatercolor || t == ToolOilBrush || t == ToolCrayon ||
            t == ToolMarker || t == ToolCalligraphy || t == ToolHighlighter ||
            t == ToolBrush || t == ToolSpray;
 }
-
-} // namespace ArtisticPresets
+}
 
 // ============================================================
 // SHAPE BUTTON
@@ -1727,7 +1488,6 @@ public:
     QImage customImage;
     bool isImportButton = false;
     bool isEmptyImport = true;
-
     ShapeButton(ShapeType s, QWidget *parent = nullptr, const QImage &img = QImage())
         : QPushButton(parent), shape(s), customImage(img) {
         setFixedSize(38, 38);
@@ -1736,7 +1496,6 @@ public:
         setToolTip(PaintEngine::shapeName(s) + tr(" (arrastra para componer)"));
         setStyleSheet("QPushButton { background: transparent; border: none; }");
     }
-
     void setImportButton(bool isImport) {
         isImportButton = isImport;
         if (isImport) {
@@ -1745,21 +1504,17 @@ public:
             setContextMenuPolicy(Qt::CustomContextMenu);
         }
     }
-
     void setCustomImage(const QImage &img) {
         customImage = img;
         isEmptyImport = img.isNull();
         update();
     }
-
     void setDarkMode(bool dark) { m_dark = dark; update(); }
-
 protected:
     void mousePressEvent(QMouseEvent *e) override {
         dragStartPos = e->pos();
         QPushButton::mousePressEvent(e);
     }
-
     void mouseMoveEvent(QMouseEvent *e) override {
         if (isImportButton && isEmptyImport) return;
         if (!(e->buttons() & Qt::LeftButton)) return;
@@ -1772,16 +1527,13 @@ protected:
         drag->setHotSpot(e->pos());
         drag->exec(Qt::CopyAction);
     }
-
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
         const ButtonLook look = resolveLook();
         paintBackground(p, look);
         paintBorder(p, look);
-
         if (look.kind == ButtonKind::ImportEmpty) {
             paintImportEmptyIcon(p);
         } else if (shape == ShapeType::CustomStamp && !customImage.isNull()) {
@@ -1790,23 +1542,19 @@ protected:
             paintShapeIcon(p, look.fig);
         }
     }
-
 private:
     enum class ButtonKind { ImportEmpty, ImportFilled, Regular };
-
     struct ButtonLook {
         ButtonKind kind = ButtonKind::Regular;
         QColor bg;
         QColor border;
         QColor fig;
     };
-
     ButtonLook resolveLook() const {
         if (isImportButton && isEmptyImport) return lookImportEmpty();
         if (isImportButton && !isEmptyImport) return lookImportFilled();
         return lookRegular();
     }
-
     ButtonLook lookImportEmpty() const {
         ButtonLook look;
         look.kind = ButtonKind::ImportEmpty;
@@ -1821,7 +1569,6 @@ private:
         }
         return look;
     }
-
     ButtonLook lookImportFilled() const {
         ButtonLook look;
         look.kind = ButtonKind::ImportFilled;
@@ -1837,7 +1584,6 @@ private:
         }
         return look;
     }
-
     ButtonLook lookRegular() const {
         ButtonLook look;
         look.kind = ButtonKind::Regular;
@@ -1853,31 +1599,26 @@ private:
         }
         return look;
     }
-
     void paintBackground(QPainter &p, const ButtonLook &look) {
         p.setPen(Qt::NoPen);
         p.setBrush(look.bg);
         p.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 6, 6);
     }
-
     void paintBorder(QPainter &p, const ButtonLook &look) {
         const bool strong = isChecked() || (isImportButton && isEmptyImport);
         p.setPen(QPen(look.border, strong ? 2 : 1));
         p.setBrush(Qt::NoBrush);
         p.drawRoundedRect(rect().adjusted(1, 1, -2, -2), 6, 6);
     }
-
     void paintImportEmptyIcon(QPainter &p) {
         const int cx = width() / 2;
         const int cy = height() / 2 - 4;
         QColor fg;
         if (m_dark) fg = QColor("#22c55e");
         else fg = underMouse() ? QColor("#15803d") : QColor("#16a34a");
-
         p.setPen(QPen(fg, 2.5, Qt::SolidLine, Qt::RoundCap));
         p.drawLine(cx - 8, cy, cx + 8, cy);
         p.drawLine(cx, cy - 8, cx, cy + 8);
-
         p.setPen(fg);
         QFont f = p.font();
         f.setPointSize(7);
@@ -1885,7 +1626,6 @@ private:
         p.setFont(f);
         p.drawText(QRect(0, height() - 14, width(), 12), Qt::AlignCenter, tr("PNG"));
     }
-
     void paintCustomImage(QPainter &p) {
         const QRectF shapeRect(4, 4, width() - 8, height() - 8);
         const QImage scaled = customImage.scaled(shapeRect.size().toSize(),
@@ -1896,7 +1636,6 @@ private:
                             scaled.width(), scaled.height());
         p.drawImage(target, scaled);
     }
-
     void paintShapeIcon(QPainter &p, const QColor &fig) {
         const QRectF shapeRect(7, 7, width() - 14, height() - 14);
         QColor fg = fig;
@@ -1905,7 +1644,6 @@ private:
         else                    fg = m_dark ? QColor("#c0c0c0") : QColor("#475569");
         PaintEngine::drawShapePrimitive(p, shape, shapeRect, fg);
     }
-
     QPoint dragStartPos;
     bool m_dark = true;
 };
@@ -1958,23 +1696,19 @@ public:
         setAcceptDrops(true);
         setCursor(Qt::CrossCursor);
     }
-
     void setElements(const QVector<ShapeElement> &elems) {
         elements = elems;
         if (selectedIndex >= elements.size())
             selectedIndex = elements.isEmpty() ? -1 : 0;
         update();
     }
-
     QVector<ShapeElement> getElements() const { return elements; }
     int getSelectedIndex() const { return selectedIndex; }
-
     void setSelectedIndex(int idx) {
         selectedIndex = idx;
         update();
         emit selectionChanged(selectedIndex);
     }
-
     void addElement(ShapeType shape, double ox, double oy, const QImage &customImg = QImage()) {
         ShapeElement el;
         el.shape = shape;
@@ -1987,7 +1721,6 @@ public:
         emit elementsChanged();
         emit selectionChanged(selectedIndex);
     }
-
     void removeSelected() {
         if (selectedIndex >= 0 && selectedIndex < elements.size()) {
             elements.removeAt(selectedIndex);
@@ -1997,7 +1730,6 @@ public:
             emit selectionChanged(selectedIndex);
         }
     }
-
     void updateSelectedElement(const ShapeElement &el) {
         if (selectedIndex >= 0 && selectedIndex < elements.size()) {
             elements[selectedIndex] = el;
@@ -2005,7 +1737,6 @@ public:
             emit elementsChanged();
         }
     }
-
     void clearAll() {
         elements.clear();
         selectedIndex = -1;
@@ -2013,21 +1744,17 @@ public:
         emit elementsChanged();
         emit selectionChanged(-1);
     }
-
     int getElementCount() const { return elements.size(); }
     void setDarkMode(bool dark) { m_dark = dark; update(); }
-
 signals:
     void elementsChanged();
     void selectionChanged(int index);
     void requestCustomStamp(ShapeType shape, const QImage &img);
-
 protected:
     void dragEnterEvent(QDragEnterEvent *e) override {
         if (e->mimeData()->hasFormat("application/x-shape-type"))
             e->acceptProposedAction();
     }
-
     void dropEvent(QDropEvent *e) override {
         if (!e->mimeData()->hasFormat("application/x-shape-type")) return;
         const int shapeInt = e->mimeData()->data("application/x-shape-type").toInt();
@@ -2042,7 +1769,6 @@ protected:
         }
         e->acceptProposedAction();
     }
-
     void mousePressEvent(QMouseEvent *e) override {
         const QPointF pos = e->position();
         int best = -1;
@@ -2060,7 +1786,6 @@ protected:
             update();
         }
     }
-
     void mouseMoveEvent(QMouseEvent *e) override {
         if (!draggingElement || selectedIndex < 0 || selectedIndex >= elements.size()) return;
         const QPointF pos = e->position();
@@ -2069,9 +1794,7 @@ protected:
         update();
         emit elementsChanged();
     }
-
     void mouseReleaseEvent(QMouseEvent *) override { draggingElement = false; }
-
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
@@ -2082,32 +1805,27 @@ protected:
         paintBorder(p);
         if (elements.isEmpty()) paintEmptyHint(p);
     }
-
 private:
     void paintCrosshair(QPainter &p) {
         p.setPen(QPen(m_dark ? QColor("#373737") : QColor("#e2e8f0"), 1, Qt::DashLine));
         p.drawLine(width() / 2, 0, width() / 2, height());
         p.drawLine(0, height() / 2, width(), height() / 2);
     }
-
     void paintElements(QPainter &p) {
         const double baseSize = qMin(width(), height()) * 0.20;
         for (int i = 0; i < elements.size(); ++i) {
             paintSingleElement(p, elements[i], i, baseSize);
         }
     }
-
     void paintSingleElement(QPainter &p, const ShapeElement &el, int idx, double baseSize) {
         const double cx = width() / 2.0 + el.offsetX * (width() / 2.0);
         const double cy = height() / 2.0 + el.offsetY * (height() / 2.0);
         const double sz = baseSize * el.scale;
         const QRectF r(cx - sz / 2, cy - sz / 2, sz, sz);
-
         p.save();
         p.translate(cx, cy);
         p.rotate(el.rotation);
         p.translate(-cx, -cy);
-
         if (el.shape == ShapeType::CustomStamp && !el.customImage.isNull()) {
             p.setOpacity(el.opacity / 100.0);
             p.drawImage(r, el.customImage);
@@ -2119,7 +1837,6 @@ private:
             c.setAlpha((int)(el.opacity * 2.55));
             PaintEngine::drawShapePrimitive(p, el.shape, r, c);
         }
-
         if (idx == selectedIndex) {
             p.setPen(QPen(QColor("#3b82f6"), 1, Qt::DashLine));
             p.setBrush(Qt::NoBrush);
@@ -2127,13 +1844,11 @@ private:
         }
         p.restore();
     }
-
     void paintBorder(QPainter &p) {
         p.setPen(QPen(m_dark ? QColor("#3a3a3a") : QColor("#d1d5db"), 1));
         p.setBrush(Qt::NoBrush);
         p.drawRect(rect().adjusted(0, 0, -1, -1));
     }
-
     void paintEmptyHint(QPainter &p) {
         p.setPen(m_dark ? QColor("#8a8a8a") : QColor("#9ca3af"));
         p.setFont(QFont("Adwaita Sans", 8));
@@ -2160,7 +1875,6 @@ public:
         setMinimumWidth(200);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     }
-
     void updatePreview(const BrushSettings &s, const QColor &c, const QColor &c2 = QColor()) {
         settings = s;
         brushColor = c;
@@ -2168,9 +1882,7 @@ public:
         dirty = true;
         update();
     }
-
     void setDarkMode(bool dark) { m_dark = dark; dirty = true; update(); }
-
 protected:
     void rebuildCache() {
         if (width() <= 4 || height() <= 4) {
@@ -2178,24 +1890,18 @@ protected:
             dirty = false;
             return;
         }
-
         QImage img(width(), height(), QImage::Format_ARGB32);
         img.fill(m_dark ? QColor("#1e1e1e") : QColor("#f3f4f6"));
-
         BrushSettings previewSettings = settings;
         previewSettings.density = qMin(previewSettings.density, 3);
         previewSettings.size = qMin(previewSettings.size, 28);
-
         const QImage stamp = PaintEngine::generateBrushStamp(
             previewSettings, brushColor, 255, false, secondColor);
-
         const QVector<QPointF> points = buildPreviewPath();
         paintPreviewStroke(img, stamp, previewSettings, points);
-
         cachedPreview = img;
         dirty = false;
     }
-
     QVector<QPointF> buildPreviewPath() const {
         const int steps = qBound(24, width() / 10, 42);
         QVector<QPointF> points;
@@ -2208,7 +1914,6 @@ protected:
         }
         return points;
     }
-
     void paintPreviewStroke(QImage &img, const QImage &stamp,
                             const BrushSettings &previewSettings,
                             const QVector<QPointF> &points) {
@@ -2231,7 +1936,6 @@ protected:
             }
         }
     }
-
     void paintEvent(QPaintEvent *) override {
         if (dirty || cachedPreview.size() != size()) rebuildCache();
         QPainter p(this);
@@ -2245,7 +1949,6 @@ protected:
         p.setFont(QFont("Adwaita Sans", 8));
         p.drawText(rect().adjusted(6, 4, -6, -4), Qt::AlignLeft | Qt::AlignTop, buildLabel());
     }
-
 private:
     QString buildLabel() const {
         QString label = PaintEngine::shapeName(settings.shape);
@@ -2274,26 +1977,21 @@ public:
         setWindowTitle(tr("Variacion aleatoria (jitter)"));
         setFixedSize(360, 250);
         applyTheme(darkMode);
-
         QVBoxLayout *layout = new QVBoxLayout(this);
         layout->setContentsMargins(16, 16, 16, 14);
         layout->setSpacing(10);
-
         addSliderRow(layout, tr("Tamano"), 0, 100, sizeJ, &sizeSlider, "%", darkMode);
         addSliderRow(layout, tr("Angulo"), 0, 180, angleJ, &angleSlider,
                      QString::fromUtf8("\xC2\xB0"), darkMode);
         addSliderRow(layout, tr("Opacidad"), 0, 100, opacityJ, &opacitySlider, "%", darkMode);
-
         QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
         layout->addWidget(buttons);
         connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     }
-
     int getSizeJitter()    const { return sizeSlider->value(); }
     int getAngleJitter()   const { return angleSlider->value(); }
     int getOpacityJitter() const { return opacitySlider->value(); }
-
 private:
     void applyTheme(bool darkMode) {
         const QString bg     = darkMode ? "#1a1a1a" : "#f5f5f5";
@@ -2302,7 +2000,6 @@ private:
         const QString border = darkMode ? "#3a3a3a" : "#d1d5db";
         const QString accent = darkMode ? "#3b82f6" : "#2563eb";
         const QString groove = darkMode ? "#444444" : "#d1d5db";
-
         setStyleSheet(QString(
             "QDialog { background-color: %1; }"
             "QLabel { color: %2; font-size: 12px; background: transparent; }"
@@ -2313,35 +2010,28 @@ private:
             "QPushButton:hover { border: 1px solid %4; }")
             .arg(bg, txt, groove, accent, input, border));
     }
-
     void addSliderRow(QVBoxLayout *layout, const QString &label, int min, int max,
                       int val, QSlider **out, const QString &suffix, bool darkMode) {
         const QString muted = darkMode ? "#a0a0a0" : "#6b7280";
-
         QVBoxLayout *box = new QVBoxLayout();
         box->setSpacing(3);
-
         QHBoxLayout *top = new QHBoxLayout();
         top->addWidget(new QLabel(label));
         top->addStretch();
-
         QLabel *valueLabel = new QLabel(QString::number(val) + suffix);
         valueLabel->setStyleSheet(QString("color: %1; font-size: 11px;").arg(muted));
         valueLabel->setMinimumWidth(44);
         valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         top->addWidget(valueLabel);
         box->addLayout(top);
-
         QSlider *slider = new QSlider(Qt::Horizontal);
         slider->setRange(min, max);
         slider->setValue(val);
         box->addWidget(slider);
         layout->addLayout(box);
-
         connect(slider, &QSlider::valueChanged, valueLabel, [valueLabel, suffix](int vv) {
             valueLabel->setText(QString::number(vv) + suffix);
         });
-
         *out = slider;
     }
 };
@@ -2357,10 +2047,8 @@ private:
     bool m_dark;
     QColor previewColor;
     QColor previewSecondColor;
-
     QString c_bg, c_panel, c_input, c_text, c_textMuted, c_border, c_borderStrong;
     QString c_accent, c_accentHover, c_hover, c_groove;
-
     QRadioButton *radio1 = nullptr;
     QRadioButton *radio2 = nullptr;
     StrokePreview *preview = nullptr;
@@ -2403,10 +2091,8 @@ private:
     QLabel *elemOpacityLabel = nullptr;
     QLabel *compositeInfo = nullptr;
     QTimer *previewTimer = nullptr;
-
     QImage customStampImage;
     ShapeButton *importButton = nullptr;
-
     void setupTheme(bool dark) {
         m_dark = dark;
         if (dark) {
@@ -2423,7 +2109,6 @@ private:
             c_hover = "#e5e7eb"; c_groove = "#d1d5db";
         }
     }
-
     void applyStyleSheet() {
         const QString comboTxt = m_dark ? "#e0e0e0" : "#1e293b";
         QString qss;
@@ -2449,15 +2134,12 @@ private:
         qss += QString("QToolTip { background-color: %1; color: %2; border: 1px solid %3; padding: 3px; font-size: 12px; }").arg(c_panel, c_text, c_border);
         setStyleSheet(qss);
     }
-
     QString labelStyle() const {
         return QString("color: %1; font-size: 11px; background: transparent;").arg(c_text);
     }
-
     QString titleStyle() const {
         return QString("color: %1; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; background: transparent;").arg(c_textMuted);
     }
-
     QString sliderStyle() const {
         return QString(
             "QSlider::groove:horizontal { height: 4px; background: %1; border-radius: 2px; }"
@@ -2465,14 +2147,12 @@ private:
             "QSlider::handle:horizontal { background: %2; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }")
             .arg(c_groove, c_accent);
     }
-
     QString comboStyle() const {
         const QString txt = m_dark ? "#e0e0e0" : "#1e293b";
         return QString(
             "QComboBox { background-color: %1; color: %2; border: 1px solid %3; border-radius: 5px; padding: 4px 8px; font-size: 12px; min-height: 22px; }")
             .arg(c_input, txt, c_border);
     }
-
     QString smallBtnStyle() const {
         const QString txt = m_dark ? "#e0e0e0" : "#1e293b";
         return QString(
@@ -2482,7 +2162,6 @@ private:
             "QPushButton:disabled { color: %6; border: 1px solid %3; }")
             .arg(c_input, txt, c_border, c_hover, c_accent, c_textMuted);
     }
-
     QString accentBtnStyle() const {
         return QString(
             "QPushButton { background-color: %1; color: white; border: none; border-radius: 5px; padding: 6px 14px; font-size: 13px; font-weight: 600; }"
@@ -2490,13 +2169,11 @@ private:
             "QPushButton:pressed { background-color: %2; }")
             .arg(c_accent, c_accentHover);
     }
-
     QLabel *makeSectionTitle(const QString &t) {
         QLabel *l = new QLabel(t);
         l->setStyleSheet(titleStyle());
         return l;
     }
-
     QSlider *makeSlider(int min, int max, int val) {
         QSlider *s = new QSlider(Qt::Horizontal);
         s->setRange(min, max);
@@ -2505,20 +2182,17 @@ private:
         s->setStyleSheet(sliderStyle());
         return s;
     }
-
     QLabel *makeLabel(const QString &text) {
         QLabel *l = new QLabel(text);
         l->setStyleSheet(labelStyle());
         return l;
     }
-
     QPushButton *makeSmallButton(const QString &text) {
         QPushButton *b = new QPushButton(text);
         b->setStyleSheet(smallBtnStyle());
         b->setCursor(Qt::PointingHandCursor);
         return b;
     }
-
     QPushButton *makeAccentButton(const QString &text) {
         QPushButton *b = new QPushButton(text);
         b->setStyleSheet(accentBtnStyle());
@@ -2526,7 +2200,6 @@ private:
         b->setFixedHeight(30);
         return b;
     }
-
     void buildTopRow(QVBoxLayout *mainLayout) {
         QHBoxLayout *topRow = new QHBoxLayout();
         radio1 = new QRadioButton(tr("Pincel 1"));
@@ -2538,35 +2211,28 @@ private:
         topRow->addStretch();
         mainLayout->addLayout(topRow);
     }
-
     void buildPreviewRow(QVBoxLayout *mainLayout) {
         QHBoxLayout *previewRow = new QHBoxLayout();
         previewRow->setSpacing(8);
         shapePreview = new ShapePreview();
         shapePreview->setDarkMode(m_dark);
         previewRow->addWidget(shapePreview);
-
         preview = new StrokePreview();
         preview->setDarkMode(m_dark);
         previewRow->addWidget(preview, 1);
         mainLayout->addLayout(previewRow);
     }
-
     void buildShapeColumn(QVBoxLayout *shapeCol) {
         shapeCol->setSpacing(6);
         shapeCol->addWidget(makeSectionTitle(tr("CATALOGO · ARRASTRA AL COMPUESTO")));
-
         shapeGrid = new QGridLayout();
         shapeGrid->setContentsMargins(2, 2, 2, 2);
         shapeGrid->setSpacing(4);
-
         shapeGroup = new QButtonGroup(this);
         shapeGroup->setExclusive(true);
-
         buildShapeGrid();
         shapeCol->addLayout(shapeGrid);
         shapeCol->addSpacing(4);
-
         shapeCol->addWidget(makeSectionTitle(tr("MODO DE ARRASTRE")));
         dragCombo = new QComboBox();
         dragCombo->addItem(tr("Continuo"));
@@ -2577,7 +2243,6 @@ private:
         dragCombo->setStyleSheet(comboStyle());
         shapeCol->addWidget(dragCombo);
         shapeCol->addSpacing(4);
-
         shapeCol->addWidget(makeSectionTitle(tr("ROTACION DEL STAMP")));
         rotationCombo = new QComboBox();
         rotationCombo->addItem(tr("Fijo"));
@@ -2587,21 +2252,17 @@ private:
         shapeCol->addWidget(rotationCombo);
         shapeCol->addStretch();
     }
-
     void buildCompositeColumn(QVBoxLayout *compCol) {
         compCol->setSpacing(5);
         compCol->addWidget(makeSectionTitle(tr("COMPOSICION DE FIGURAS")));
-
         compositeInfo = new QLabel(tr("Figura simple"));
         compositeInfo->setStyleSheet(
             QString("color: %1; font-size: 11px; font-weight: 600; background: transparent;")
                 .arg(c_accent));
         compCol->addWidget(compositeInfo);
-
         compositeEditor = new CompositeEditor();
         compositeEditor->setDarkMode(m_dark);
         compCol->addWidget(compositeEditor, 0, Qt::AlignHCenter);
-
         QHBoxLayout *compBtnRow = new QHBoxLayout();
         compBtnRow->setSpacing(6);
         btnJitter = makeSmallButton(tr("Variacion..."));
@@ -2613,7 +2274,6 @@ private:
         compBtnRow->addStretch();
         compCol->addLayout(compBtnRow);
         compCol->addSpacing(2);
-
         compCol->addWidget(makeSectionTitle(tr("ELEMENTO SELECCIONADO")));
         elemScaleLabel = makeLabel(tr("Escala: -"));
         compCol->addWidget(elemScaleLabel);
@@ -2629,11 +2289,9 @@ private:
         compCol->addWidget(elemOpacitySlider);
         compCol->addStretch();
     }
-
     void buildControlsColumn(QVBoxLayout *ctrlCol) {
         ctrlCol->setSpacing(4);
         ctrlCol->addWidget(makeSectionTitle(tr("TRAZO")));
-
         sizeRow = new QHBoxLayout();
         sizeRow->setSpacing(8);
         sizeLabel = new QLabel(tr("Tamano:"));
@@ -2647,7 +2305,6 @@ private:
         sizeRow->addWidget(sizeSpin);
         sizeRow->addStretch();
         ctrlCol->addLayout(sizeRow);
-
         addSliderControl(ctrlCol, tr("Opacidad: 100%"), 1, 100, 100, &opacitySlider, &opacityLabel);
         addSliderControl(ctrlCol, tr("Dispersion: 0"), 0, 50, 0, &scatterSlider, &scatterLabel);
         addSliderControl(ctrlCol, tr("Angulo: 0") + QString::fromUtf8("\xC2\xB0"),
@@ -2655,10 +2312,8 @@ private:
         addSliderControl(ctrlCol, tr("Proporcion: 100%"), 10, 300, 100, &aspectSlider, &aspectLabel);
         addSliderControl(ctrlCol, tr("Figuras por paso: 1"), 1, 20, 1, &densitySlider, &densityLabel);
         addSliderControl(ctrlCol, tr("Flujo: 100%"), 1, 100, 100, &flowSlider, &flowLabel);
-
         ctrlCol->addSpacing(2);
         ctrlCol->addWidget(makeSectionTitle(tr("MODOS")));
-
         airbrushCheck = new QCheckBox(tr("Aerografo (acumula)"));
         ctrlCol->addWidget(airbrushCheck);
         granulationCheck = new QCheckBox(tr("Granulado (papel)"));
@@ -2667,14 +2322,12 @@ private:
         ctrlCol->addWidget(mixColorCheck);
         wetCheck = new QCheckBox(tr("Mezcla humeda (Wet)"));
         ctrlCol->addWidget(wetCheck);
-
         wetLabel = makeLabel(tr("Cantidad de mezcla: 50%"));
         ctrlCol->addWidget(wetLabel);
         wetSlider = makeSlider(0, 100, 50);
         ctrlCol->addWidget(wetSlider);
         ctrlCol->addStretch();
     }
-
     void addSliderControl(QVBoxLayout *parent, const QString &labelText,
                           int min, int max, int val,
                           QSlider **slider, QLabel **label) {
@@ -2683,32 +2336,26 @@ private:
         *slider = makeSlider(min, max, val);
         parent->addWidget(*slider);
     }
-
     void buildButtonRow(QVBoxLayout *mainLayout) {
         QHBoxLayout *btnRow = new QHBoxLayout();
         btnRow->setSpacing(8);
         btnRow->addStretch();
-
         QPushButton *btnCancel = makeSmallButton(tr("Cancelar"));
         btnCancel->setFixedHeight(30);
         QPushButton *btnOk = makeAccentButton(tr("Aceptar"));
-
         btnRow->addWidget(btnCancel);
         btnRow->addWidget(btnOk);
         mainLayout->addLayout(btnRow);
-
         connect(btnOk, &QPushButton::clicked, this, [this]() {
             saveControlsToPreset();
             accept();
         });
         connect(btnCancel, &QPushButton::clicked, this, &QDialog::reject);
     }
-
     void buildShapeGrid() {
         const QList<ShapeType> shapes = PaintEngine::allShapes();
         const int cols = 7;
         int row = 0, col = 0;
-
         for (int i = 0; i < shapes.size(); ++i) {
             ShapeButton *btn = new ShapeButton(shapes[i]);
             btn->setDarkMode(m_dark);
@@ -2717,10 +2364,8 @@ private:
             shapeGrid->addWidget(btn, row, col);
             if (++col >= cols) { col = 0; row++; }
         }
-
         buildImportButton(shapes.size(), row, col, cols);
     }
-
     void buildImportButton(int buttonId, int row, int col, int cols) {
         importButton = new ShapeButton(ShapeType::CustomStamp);
         importButton->setDarkMode(m_dark);
@@ -2728,15 +2373,12 @@ private:
         importButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         importButton->setMinimumWidth(80);
         importButton->setToolTip(tr("Click: importar PNG\nClic derecho: quitar PNG actual"));
-
         shapeGroup->addButton(importButton, buttonId);
         shapeButtons.append(importButton);
         shapeGrid->addWidget(importButton, row, col, 1, cols - col);
-
         connect(importButton, &QPushButton::clicked, this, [this]() {
             importPngAsStamp();
         });
-
         connect(importButton, &QPushButton::customContextMenuRequested, this,
                 [this](const QPoint &pos) {
             if (customStampImage.isNull()) return;
@@ -2751,14 +2393,12 @@ private:
             }
         });
     }
-
     void importPngAsStamp() {
         const QString path = QFileDialog::getOpenFileName(
             this, tr("Importar PNG como stamp"),
             QString(),
             tr("Imagenes PNG (*.png);;Todas las imagenes (*.png *.jpg *.jpeg *.bmp)"));
         if (path.isEmpty()) return;
-
         QImage img(path);
         if (img.isNull()) {
             QMessageBox::warning(this, tr("Error"), tr("No se pudo cargar el PNG."));
@@ -2774,10 +2414,8 @@ private:
         importButton->setChecked(true);
         saveControlsToPreset();
     }
-
     void loadControlsFromPreset() {
         const BrushSettings &s = presets[activeIndex];
-
         setControlValue(sizeSpin, s.size);
         setControlValue(opacitySlider, s.opacity);
         setControlValue(scatterSlider, s.scatter);
@@ -2792,53 +2430,43 @@ private:
         setControlValue(granulationCheck, s.granulation);
         setControlValue(mixColorCheck, s.mixSecondColor);
         setControlValue(wetSlider, s.wetAmount);
-
         wetSlider->setVisible(s.wetMix);
         wetLabel->setVisible(s.wetMix);
-
         if (s.shape == ShapeType::CustomStamp && !s.customStampImage.isNull()) {
             customStampImage = s.customStampImage;
             importButton->setCustomImage(customStampImage);
             importButton->setToolTip(tr("PNG: %1x%2\nClick: reemplazar\nClic derecho: quitar")
                 .arg(customStampImage.width()).arg(customStampImage.height()));
         }
-
         updateShapeButtonsSelection(s.shape);
-
         compositeEditor->blockSignals(true);
         compositeEditor->setElements(s.shapeElements);
         compositeEditor->blockSignals(false);
-
         updateAllLabels();
         updateCompositeInfo();
         loadElementControls();
         refreshPreviews();
     }
-
     void setControlValue(QSlider *slider, int value) {
         slider->blockSignals(true);
         slider->setValue(value);
         slider->blockSignals(false);
     }
-
     void setControlValue(QSpinBox *spin, int value) {
         spin->blockSignals(true);
         spin->setValue(value);
         spin->blockSignals(false);
     }
-
     void setControlValue(QComboBox *combo, int value) {
         combo->blockSignals(true);
         combo->setCurrentIndex(value);
         combo->blockSignals(false);
     }
-
     void setControlValue(QCheckBox *check, bool value) {
         check->blockSignals(true);
         check->setChecked(value);
         check->blockSignals(false);
     }
-
     void updateShapeButtonsSelection(ShapeType selected) {
         const QList<ShapeType> shapes = PaintEngine::allShapes();
         for (int i = 0; i < shapeButtons.size(); ++i) {
@@ -2853,7 +2481,6 @@ private:
             shapeButtons[i]->blockSignals(false);
         }
     }
-
     void updateAllLabels() {
         const BrushSettings &s = presets[activeIndex];
         opacityLabel->setText(tr("Opacidad: %1%").arg(s.opacity));
@@ -2864,7 +2491,6 @@ private:
         aspectLabel->setText(tr("Proporcion: %1%").arg((int)(s.aspectRatio * 100)));
         wetLabel->setText(tr("Cantidad de mezcla: %1%").arg(s.wetAmount));
     }
-
     void saveControlsToPreset() {
         BrushSettings &s = presets[activeIndex];
         s.size = sizeSpin->value();
@@ -2882,7 +2508,6 @@ private:
         s.granulation = granulationCheck->isChecked();
         s.mixSecondColor = mixColorCheck->isChecked();
         s.shapeElements = compositeEditor->getElements();
-
         const int checkedId = shapeGroup->checkedId();
         const QList<ShapeType> shapes = PaintEngine::allShapes();
         if (checkedId >= 0 && checkedId < shapes.size()) {
@@ -2892,12 +2517,10 @@ private:
             s.shape = ShapeType::CustomStamp;
             s.customStampImage = customStampImage;
         }
-
         updateAllLabels();
         updateCompositeInfo();
         schedulePreview();
     }
-
     void refreshPreviews() {
         const BrushSettings &s = presets[activeIndex];
         preview->updatePreview(s, previewColor, previewSecondColor);
@@ -2905,7 +2528,6 @@ private:
         const QImage stamp = PaintEngine::generateBrushStamp(s, previewColor, 255, false, secondForStamp);
         shapePreview->updateStamp(stamp);
     }
-
     void schedulePreview() {
         if (!previewTimer) {
             previewTimer = new QTimer(this);
@@ -2915,24 +2537,20 @@ private:
         }
         previewTimer->start();
     }
-
     void updateCompositeInfo() {
         const int count = compositeEditor->getElementCount();
         compositeInfo->setText(count > 0
             ? tr("Compuesto: %1 figuras").arg(count)
             : tr("Figura simple"));
     }
-
     void loadElementControls() {
         const int idx = compositeEditor->getSelectedIndex();
         const QVector<ShapeElement> elems = compositeEditor->getElements();
         const bool valid = (idx >= 0 && idx < elems.size());
-
         elemScaleSlider->setEnabled(valid);
         elemRotationSlider->setEnabled(valid);
         elemOpacitySlider->setEnabled(valid);
         btnRemoveElement->setEnabled(valid);
-
         if (valid) {
             const ShapeElement &el = elems[idx];
             setControlValue(elemScaleSlider, (int)(el.scale * 100));
@@ -2947,7 +2565,6 @@ private:
             elemOpacityLabel->setText(tr("Opacidad: -"));
         }
     }
-
     void connectSignals() {
         connect(radio1, &QRadioButton::toggled, this, [this](bool checked) {
             if (checked) { saveControlsToPreset(); activeIndex = 0; loadControlsFromPreset(); }
@@ -2955,10 +2572,8 @@ private:
         connect(radio2, &QRadioButton::toggled, this, [this](bool checked) {
             if (checked) { saveControlsToPreset(); activeIndex = 1; loadControlsFromPreset(); }
         });
-
         connect(sizeSpin, QOverload<int>::of(&QSpinBox::valueChanged),
                 this, [this]() { saveControlsToPreset(); });
-
         const QList<QSlider*> allSliders = {
             opacitySlider, scatterSlider, angleSlider, densitySlider,
             flowSlider, aspectSlider, wetSlider
@@ -2966,28 +2581,23 @@ private:
         for (QSlider *s : allSliders) {
             connect(s, &QSlider::valueChanged, this, [this]() { saveControlsToPreset(); });
         }
-
         connect(dragCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this]() { saveControlsToPreset(); });
         connect(rotationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this]() { saveControlsToPreset(); });
-
         const QList<QCheckBox*> allChecks = {
             airbrushCheck, granulationCheck, mixColorCheck
         };
         for (QCheckBox *c : allChecks) {
             connect(c, &QCheckBox::toggled, this, [this]() { saveControlsToPreset(); });
         }
-
         connect(wetCheck, &QCheckBox::toggled, this, [this](bool checked) {
             wetSlider->setVisible(checked);
             wetLabel->setVisible(checked);
             saveControlsToPreset();
         });
-
         connect(shapeGroup, QOverload<int>::of(&QButtonGroup::idClicked),
                 this, [this](int) { saveControlsToPreset(); });
-
         connect(btnJitter, &QPushButton::clicked, this, [this]() {
             const BrushSettings &s = presets[activeIndex];
             JitterDialog dlg(m_dark, s.sizeJitter, s.angleJitter, s.opacityJitter, this);
@@ -2998,7 +2608,6 @@ private:
                 schedulePreview();
             }
         });
-
         connect(compositeEditor, &CompositeEditor::elementsChanged,
                 this, [this]() { saveControlsToPreset(); });
         connect(compositeEditor, &CompositeEditor::selectionChanged,
@@ -3007,7 +2616,6 @@ private:
                 this, [this]() { compositeEditor->removeSelected(); });
         connect(btnClearComposite, &QPushButton::clicked,
                 this, [this]() { compositeEditor->clearAll(); });
-
         connect(elemScaleSlider, &QSlider::valueChanged, this, [this](int v) {
             updateElementScale(v);
         });
@@ -3018,7 +2626,6 @@ private:
             updateElementOpacity(v);
         });
     }
-
     void updateElementScale(int v) {
         const int idx = compositeEditor->getSelectedIndex();
         QVector<ShapeElement> elems = compositeEditor->getElements();
@@ -3028,7 +2635,6 @@ private:
         elemScaleLabel->setText(tr("Escala: %1%").arg(v));
         compositeEditor->updateSelectedElement(el);
     }
-
     void updateElementRotation(int v) {
         const int idx = compositeEditor->getSelectedIndex();
         QVector<ShapeElement> elems = compositeEditor->getElements();
@@ -3038,7 +2644,6 @@ private:
         elemRotationLabel->setText(tr("Rotacion: %1%2").arg(v).arg(QString::fromUtf8("\xC2\xB0")));
         compositeEditor->updateSelectedElement(el);
     }
-
     void updateElementOpacity(int v) {
         const int idx = compositeEditor->getSelectedIndex();
         QVector<ShapeElement> elems = compositeEditor->getElements();
@@ -3048,7 +2653,6 @@ private:
         elemOpacityLabel->setText(tr("Opacidad: %1%").arg(v));
         compositeEditor->updateSelectedElement(el);
     }
-
 public:
     CustomBrushesDialog(bool darkMode, BrushSettings p1, BrushSettings p2, int active,
                         QWidget *parent = nullptr)
@@ -3060,42 +2664,31 @@ public:
         setWindowTitle(tr("Configurar Pinceles Personalizados"));
         setMinimumSize(920, 720);
         applyStyleSheet();
-
         QVBoxLayout *mainLayout = new QVBoxLayout(this);
         mainLayout->setContentsMargins(12, 12, 12, 12);
         mainLayout->setSpacing(8);
-
         buildTopRow(mainLayout);
         buildPreviewRow(mainLayout);
-
         QHBoxLayout *contentRow = new QHBoxLayout();
         contentRow->setSpacing(14);
-
         QVBoxLayout *shapeCol = new QVBoxLayout();
         buildShapeColumn(shapeCol);
         contentRow->addLayout(shapeCol);
-
         QVBoxLayout *compCol = new QVBoxLayout();
         buildCompositeColumn(compCol);
         contentRow->addLayout(compCol);
-
         QVBoxLayout *ctrlCol = new QVBoxLayout();
         buildControlsColumn(ctrlCol);
         contentRow->addLayout(ctrlCol);
-
         mainLayout->addLayout(contentRow, 1);
         buildButtonRow(mainLayout);
-
         connectSignals();
         loadControlsFromPreset();
     }
-
     BrushSettings getPreset1() const { return presets[0]; }
     BrushSettings getPreset2() const { return presets[1]; }
     int getActivePresetIndex() const { return activeIndex; }
-
     void setPreviewColor(const QColor &c) { previewColor = c; refreshPreviews(); }
     void setPreviewSecondColor(const QColor &c) { previewSecondColor = c; refreshPreviews(); }
 };
-
 #endif // CUSTOMBRUSHES_H
