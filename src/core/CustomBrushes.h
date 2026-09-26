@@ -93,7 +93,67 @@ struct BrushSettings {
 };
 
 // ============================================================
-// SHAPE PATH BUILDER — Reemplaza el switch gigante con tabla de funciones
+// SHAPE NAME TABLE — Replace Conditional with Polymorphism
+// ============================================================
+class ShapeNames {
+public:
+    static QString name(ShapeType s) {
+        const QString n = lookup(s);
+        return n.isEmpty() ? QString() : QObject::tr(n.toUtf8().constData());
+    }
+
+private:
+    static QString lookup(ShapeType s) {
+        static const QHash<int, QString> table = {
+            {(int)ShapeType::Circle,        "Circulo"},
+            {(int)ShapeType::Square,        "Cuadrado"},
+            {(int)ShapeType::RoundedSquare, "Cuadrado redondeado"},
+            {(int)ShapeType::Diamond,       "Rombo"},
+            {(int)ShapeType::Triangle,      "Triangulo"},
+            {(int)ShapeType::RightTriangle, "Triangulo rectangulo"},
+            {(int)ShapeType::Pentagon,      "Pentagono"},
+            {(int)ShapeType::Hexagon,       "Hexagono"},
+            {(int)ShapeType::Star4,         "Estrella 4 puntas"},
+            {(int)ShapeType::Star5,         "Estrella 5 puntas"},
+            {(int)ShapeType::Star6,         "Estrella 6 puntas"},
+            {(int)ShapeType::Cross,         "Cruz"},
+            {(int)ShapeType::Plus,          "Signo mas"},
+            {(int)ShapeType::X,             "Equis"},
+            {(int)ShapeType::Arrow,         "Flecha"},
+            {(int)ShapeType::Heart,         "Corazon"},
+            {(int)ShapeType::Line,          "Linea"},
+            {(int)ShapeType::PencilTip,     "Punta de lapiz"},
+            {(int)ShapeType::FlatTip,       "Punta plana"},
+            {(int)ShapeType::ChiselTip,     "Punta cincel"},
+            {(int)ShapeType::Leaf,          "Hoja"},
+            {(int)ShapeType::Drop,          "Gota"},
+            {(int)ShapeType::Crescent,      "Media luna"},
+            {(int)ShapeType::Ring,          "Anillo"},
+            {(int)ShapeType::HalfCircle,    "Semicirculo"},
+            {(int)ShapeType::Sparkle,       "Destello"},
+            {(int)ShapeType::Clover,        "Trebol"},
+            {(int)ShapeType::Gear,          "Engranaje"},
+            {(int)ShapeType::Lightning,     "Rayo"},
+            {(int)ShapeType::MusicNote,     "Nota musical"},
+            {(int)ShapeType::Flower,        "Flor"},
+            {(int)ShapeType::Butterfly,     "Mariposa"},
+            {(int)ShapeType::Cloud,         "Nube"},
+            {(int)ShapeType::Speech,        "Bocadillo"},
+            {(int)ShapeType::LocationPin,   "Pin de ubicacion"},
+            {(int)ShapeType::Wave,          "Onda"},
+            {(int)ShapeType::Spiral,        "Espiral"},
+            {(int)ShapeType::StarMany,      "Estrella muchos picos"},
+            {(int)ShapeType::Infinity,      "Infinito"},
+            {(int)ShapeType::DiamondStar,   "Rombo estrella"},
+            {(int)ShapeType::CustomStamp,   "PNG importado"},
+        };
+        auto it = table.constFind((int)s);
+        return (it != table.constEnd()) ? it.value() : QString();
+    }
+};
+
+// ============================================================
+// SHAPE PATH BUILDER — tabla de builders
 // ============================================================
 class ShapePathBuilder {
 public:
@@ -112,9 +172,6 @@ public:
         }
     };
 
-    // ------------------------------------------------------------
-    // Helpers geométricos reutilizables
-    // ------------------------------------------------------------
     static void appendRegularPolygon(QPainterPath &path, const Context &ctx,
                                      int sides, double startAngle, double radiusFactor) {
         for (int i = 0; i < sides; ++i) {
@@ -141,9 +198,6 @@ public:
         path.closeSubpath();
     }
 
-    // ------------------------------------------------------------
-    // Builders individuales
-    // ------------------------------------------------------------
     static void buildCircle(QPainterPath &p, const Context &c)          { p.addEllipse(c.r); }
     static void buildSquare(QPainterPath &p, const Context &c)          { p.addRect(c.r); }
     static void buildRoundedSquare(QPainterPath &p, const Context &c)   { p.addRoundedRect(c.r, c.w * 0.2, c.h * 0.2); }
@@ -496,9 +550,6 @@ public:
         p.closeSubpath();
     }
 
-    // ------------------------------------------------------------
-    // TABLA DE DISPATCH — Replace Conditional with Polymorphism
-    // ------------------------------------------------------------
     using BuilderFn = void(*)(QPainterPath&, const Context&);
 
     static BuilderFn builderFor(ShapeType s) {
@@ -559,66 +610,128 @@ public:
 };
 
 // ============================================================
-// GEOMETRY DRAWER — DrawGeometry refactorizado por figura
+// GEOMETRY DRAWER — draw dispatch con tabla de funciones
 // ============================================================
 class GeometryDrawer {
 public:
+    // ------------------------------------------------------------
+    // Tipos de firma de dibujo por herramienta
+    // ------------------------------------------------------------
+    using PointDrawFn = void(*)(QPainter&, const QPoint&, const QPoint&);
+    using RectDrawFn  = void(*)(QPainter&, const QRect&);
+
+    // ------------------------------------------------------------
+    // Entrada pública — dispatcher delgado
+    // ------------------------------------------------------------
     static void draw(QPainter &painter, const QPoint &p1, const QPoint &p2, ToolType tool) {
         const QRect r = QRect(p1, p2).normalized();
-        switch (tool) {
-        case ToolLine:          painter.drawLine(p1, p2); break;
-        case ToolRectangle:     painter.drawRect(r); break;
-        case ToolEllipse:       painter.drawEllipse(r); break;
-        case ToolRoundRect:     painter.drawRoundedRect(r, 12, 12); break;
-        case ToolTriangle:      drawTriangle(painter, p1, p2); break;
-        case ToolRightTriangle: drawRightTriangle(painter, p1, p2); break;
-        case ToolDiamond:       drawDiamond(painter, p1, p2); break;
-        case ToolPentagon:      drawRegularPolygon(painter, r, 5); break;
-        case ToolHexagon:       drawRegularPolygon(painter, r, 6); break;
-        case ToolStar:          drawStar(painter, r); break;
-        case ToolArrowRight:    drawArrow(painter, r, true); break;
-        case ToolArrowLeft:     drawArrow(painter, r, false); break;
-        case ToolHeart:         drawHeart(painter, r); break;
-        case ToolCube:          drawCube(painter, r); break;
-        default: break;
+
+        if (PointDrawFn pfn = pointFnFor(tool)) {
+            pfn(painter, p1, p2);
+            return;
+        }
+        if (RectDrawFn rfn = rectFnFor(tool)) {
+            rfn(painter, r);
+            return;
         }
     }
 
 private:
-    static void drawTriangle(QPainter &painter, const QPoint &p1, const QPoint &p2) {
-        QPolygon t;
-        t << QPoint((p1.x() + p2.x()) / 2, p1.y())
-          << QPoint(p1.x(), p2.y())
-          << QPoint(p2.x(), p2.y());
-        painter.drawPolygon(t);
+    // ------------------------------------------------------------
+    // Tablas de dispatch
+    // ------------------------------------------------------------
+    static PointDrawFn pointFnFor(ToolType tool) {
+        static const QHash<int, PointDrawFn> table = {
+            {(int)ToolLine,          &drawLinePts},
+            {(int)ToolTriangle,      &drawTrianglePts},
+            {(int)ToolRightTriangle, &drawRightTrianglePts},
+            {(int)ToolDiamond,       &drawDiamondPts},
+        };
+        auto it = table.constFind((int)tool);
+        return (it != table.constEnd()) ? it.value() : nullptr;
     }
 
-    static void drawRightTriangle(QPainter &painter, const QPoint &p1, const QPoint &p2) {
-        QPolygon t;
-        t << p1 << QPoint(p1.x(), p2.y()) << p2;
-        painter.drawPolygon(t);
+    static RectDrawFn rectFnFor(ToolType tool) {
+        static const QHash<int, RectDrawFn> table = {
+            {(int)ToolRectangle,    &drawRectangleR},
+            {(int)ToolEllipse,      &drawEllipseR},
+            {(int)ToolRoundRect,    &drawRoundRectR},
+            {(int)ToolPentagon,     &drawPentagonR},
+            {(int)ToolHexagon,      &drawHexagonR},
+            {(int)ToolStar,         &drawStarR},
+            {(int)ToolArrowRight,   &drawArrowRightR},
+            {(int)ToolArrowLeft,    &drawArrowLeftR},
+            {(int)ToolHeart,        &drawHeartR},
+            {(int)ToolCube,         &drawCubeR},
+        };
+        auto it = table.constFind((int)tool);
+        return (it != table.constEnd()) ? it.value() : nullptr;
     }
 
-    static void drawDiamond(QPainter &painter, const QPoint &p1, const QPoint &p2) {
-        QPolygon t;
-        t << QPoint((p1.x() + p2.x()) / 2, p1.y())
-          << QPoint(p2.x(), (p1.y() + p2.y()) / 2)
-          << QPoint((p1.x() + p2.x()) / 2, p2.y())
-          << QPoint(p1.x(), (p1.y() + p2.y()) / 2);
-        painter.drawPolygon(t);
+    // ------------------------------------------------------------
+    // Implementaciones — firma (QPainter, QPoint, QPoint)
+    // ------------------------------------------------------------
+    static void drawLinePts(QPainter &p, const QPoint &a, const QPoint &b) {
+        p.drawLine(a, b);
     }
 
-    static void drawRegularPolygon(QPainter &painter, const QRect &r, int sides) {
+    static void drawTrianglePts(QPainter &p, const QPoint &a, const QPoint &b) {
+        QPolygon t;
+        t << QPoint((a.x() + b.x()) / 2, a.y())
+          << QPoint(a.x(), b.y())
+          << QPoint(b.x(), b.y());
+        p.drawPolygon(t);
+    }
+
+    static void drawRightTrianglePts(QPainter &p, const QPoint &a, const QPoint &b) {
+        QPolygon t;
+        t << a << QPoint(a.x(), b.y()) << b;
+        p.drawPolygon(t);
+    }
+
+    static void drawDiamondPts(QPainter &p, const QPoint &a, const QPoint &b) {
+        QPolygon t;
+        t << QPoint((a.x() + b.x()) / 2, a.y())
+          << QPoint(b.x(), (a.y() + b.y()) / 2)
+          << QPoint((a.x() + b.x()) / 2, b.y())
+          << QPoint(a.x(), (a.y() + b.y()) / 2);
+        p.drawPolygon(t);
+    }
+
+    // ------------------------------------------------------------
+    // Implementaciones — firma (QPainter, QRect)
+    // ------------------------------------------------------------
+    static void drawRectangleR(QPainter &p, const QRect &r) {
+        p.drawRect(r);
+    }
+
+    static void drawEllipseR(QPainter &p, const QRect &r) {
+        p.drawEllipse(r);
+    }
+
+    static void drawRoundRectR(QPainter &p, const QRect &r) {
+        p.drawRoundedRect(r, 12, 12);
+    }
+
+    static void drawPentagonR(QPainter &p, const QRect &r) {
+        drawRegularPolygonR(p, r, 5);
+    }
+
+    static void drawHexagonR(QPainter &p, const QRect &r) {
+        drawRegularPolygonR(p, r, 6);
+    }
+
+    static void drawRegularPolygonR(QPainter &p, const QRect &r, int sides) {
         QPolygon poly;
         for (int i = 0; i < sides; ++i) {
             const double angle = -M_PI / 2 + i * 2 * M_PI / sides;
             poly << QPoint(r.center().x() + r.width() / 2 * cos(angle),
                            r.center().y() + r.height() / 2 * sin(angle));
         }
-        painter.drawPolygon(poly);
+        p.drawPolygon(poly);
     }
 
-    static void drawStar(QPainter &painter, const QRect &r) {
+    static void drawStarR(QPainter &p, const QRect &r) {
         QPolygon poly;
         const int points = 5;
         for (int i = 0; i < points * 2; ++i) {
@@ -627,10 +740,18 @@ private:
             poly << QPoint(r.center().x() + r.width() / 2 * f * cos(angle),
                            r.center().y() + r.height() / 2 * f * sin(angle));
         }
-        painter.drawPolygon(poly);
+        p.drawPolygon(poly);
     }
 
-    static void drawArrow(QPainter &painter, const QRect &r, bool right) {
+    static void drawArrowRightR(QPainter &p, const QRect &r) {
+        drawArrowR(p, r, true);
+    }
+
+    static void drawArrowLeftR(QPainter &p, const QRect &r) {
+        drawArrowR(p, r, false);
+    }
+
+    static void drawArrowR(QPainter &p, const QRect &r, bool right) {
         const int ym = r.top() + r.height() / 2;
         const int xb = right ? r.left() + r.width() * 0.55 : r.left() + r.width() * 0.45;
         const int tk = r.height() * 0.25;
@@ -642,10 +763,10 @@ private:
              << QPoint(xb, r.bottom())
              << QPoint(xb, ym + tk)
              << QPoint(right ? r.left() : r.right(), ym + tk);
-        painter.drawPolygon(poly);
+        p.drawPolygon(poly);
     }
 
-    static void drawHeart(QPainter &painter, const QRect &r) {
+    static void drawHeartR(QPainter &p, const QRect &r) {
         QPainterPath path;
         path.moveTo(r.left() + r.width() / 2, r.top() + r.height() * 0.28);
         path.cubicTo(r.left() + r.width() * 0.1, r.top() - r.height() * 0.05,
@@ -654,20 +775,20 @@ private:
         path.cubicTo(r.right(), r.top() + r.height() * 0.6,
                      r.right() - r.width() * 0.1, r.top() - r.height() * 0.05,
                      r.left() + r.width() / 2, r.top() + r.height() * 0.28);
-        painter.drawPath(path);
+        p.drawPath(path);
     }
 
-    static void drawCube(QPainter &painter, const QRect &r) {
+    static void drawCubeR(QPainter &p, const QRect &r) {
         int offset = qMin(r.width(), r.height()) * 0.3;
         if (offset < 4) offset = 4;
         const QRect front(r.left(), r.top() + offset, r.width() - offset, r.height() - offset);
         const QRect back(r.left() + offset, r.top(), r.width() - offset, r.height() - offset);
-        painter.drawRect(front);
-        painter.drawRect(back);
-        painter.drawLine(front.topLeft(), back.topLeft());
-        painter.drawLine(front.topRight(), back.topRight());
-        painter.drawLine(front.bottomLeft(), back.bottomLeft());
-        painter.drawLine(front.bottomRight(), back.bottomRight());
+        p.drawRect(front);
+        p.drawRect(back);
+        p.drawLine(front.topLeft(), back.topLeft());
+        p.drawLine(front.topRight(), back.topRight());
+        p.drawLine(front.bottomLeft(), back.bottomLeft());
+        p.drawLine(front.bottomRight(), back.bottomRight());
     }
 };
 
@@ -677,53 +798,10 @@ private:
 class PaintEngine {
 public:
     // ------------------------------------------------------------
-    // Nombres de figuras
+    // Nombres de figuras — delega en ShapeNames
     // ------------------------------------------------------------
     static QString shapeName(ShapeType s) {
-        switch (s) {
-        case ShapeType::Circle:       return QObject::tr("Circulo");
-        case ShapeType::Square:       return QObject::tr("Cuadrado");
-        case ShapeType::RoundedSquare:return QObject::tr("Cuadrado redondeado");
-        case ShapeType::Diamond:      return QObject::tr("Rombo");
-        case ShapeType::Triangle:     return QObject::tr("Triangulo");
-        case ShapeType::RightTriangle:return QObject::tr("Triangulo rectangulo");
-        case ShapeType::Pentagon:     return QObject::tr("Pentagono");
-        case ShapeType::Hexagon:      return QObject::tr("Hexagono");
-        case ShapeType::Star4:        return QObject::tr("Estrella 4 puntas");
-        case ShapeType::Star5:        return QObject::tr("Estrella 5 puntas");
-        case ShapeType::Star6:        return QObject::tr("Estrella 6 puntas");
-        case ShapeType::Cross:        return QObject::tr("Cruz");
-        case ShapeType::Plus:         return QObject::tr("Signo mas");
-        case ShapeType::X:            return QObject::tr("Equis");
-        case ShapeType::Arrow:        return QObject::tr("Flecha");
-        case ShapeType::Heart:        return QObject::tr("Corazon");
-        case ShapeType::Line:         return QObject::tr("Linea");
-        case ShapeType::PencilTip:    return QObject::tr("Punta de lapiz");
-        case ShapeType::FlatTip:      return QObject::tr("Punta plana");
-        case ShapeType::ChiselTip:    return QObject::tr("Punta cincel");
-        case ShapeType::Leaf:         return QObject::tr("Hoja");
-        case ShapeType::Drop:         return QObject::tr("Gota");
-        case ShapeType::Crescent:     return QObject::tr("Media luna");
-        case ShapeType::Ring:         return QObject::tr("Anillo");
-        case ShapeType::HalfCircle:   return QObject::tr("Semicirculo");
-        case ShapeType::Sparkle:      return QObject::tr("Destello");
-        case ShapeType::Clover:       return QObject::tr("Trebol");
-        case ShapeType::Gear:         return QObject::tr("Engranaje");
-        case ShapeType::Lightning:    return QObject::tr("Rayo");
-        case ShapeType::MusicNote:    return QObject::tr("Nota musical");
-        case ShapeType::Flower:       return QObject::tr("Flor");
-        case ShapeType::Butterfly:    return QObject::tr("Mariposa");
-        case ShapeType::Cloud:        return QObject::tr("Nube");
-        case ShapeType::Speech:       return QObject::tr("Bocadillo");
-        case ShapeType::LocationPin:  return QObject::tr("Pin de ubicacion");
-        case ShapeType::Wave:         return QObject::tr("Onda");
-        case ShapeType::Spiral:       return QObject::tr("Espiral");
-        case ShapeType::StarMany:     return QObject::tr("Estrella muchos picos");
-        case ShapeType::Infinity:     return QObject::tr("Infinito");
-        case ShapeType::DiamondStar:  return QObject::tr("Rombo estrella");
-        case ShapeType::CustomStamp:  return QObject::tr("PNG importado");
-        }
-        return QString();
+        return ShapeNames::name(s);
     }
 
     static QList<ShapeType> allShapes() {
@@ -744,7 +822,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // baseShapePath — ahora delgado, delega en ShapePathBuilder
+    // baseShapePath — delega en ShapePathBuilder
     // ------------------------------------------------------------
     static QPainterPath baseShapePath(ShapeType shape) {
         static QHash<int, QPainterPath> cache;
@@ -988,7 +1066,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // Stamp simple (sin composición)
+    // Stamp simple
     // ------------------------------------------------------------
     static void paintSingleStampShape(QPainter &p, const BrushSettings &config,
                                       const QColor &baseColor, const QColor &secondColor,
@@ -1089,7 +1167,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // generateBrushStamp — dispatcher delgado
+    // generateBrushStamp
     // ------------------------------------------------------------
     static QImage generateBrushStamp(const BrushSettings &config, const QColor &baseColor,
                                      int penOpacity, bool pixelArt,
@@ -1234,7 +1312,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // Muestreo de color del canvas
+    // Muestreo de color
     // ------------------------------------------------------------
     static QColor sampleCanvasColor(const QImage &image, const QPoint &pos, int radius) {
         if (image.isNull()) return QColor();
@@ -1327,22 +1405,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // StrokeParameters — Introduce Parameter Object
-    // ------------------------------------------------------------
-    struct StrokeParameters {
-        QImage *image = nullptr;
-        QImage stamp;
-        BrushSettings config;
-        double mouseSensitivity = 1.0;
-        QColor baseColor;
-        QColor secondColor;
-        QColor fallbackCanvasColor;
-        double totalStrokeLength = 0.0;
-        double accumulatedLength = 0.0;
-    };
-
-    // ------------------------------------------------------------
-    // Aplicar stamp puntual (con parámetros extra)
+    // Aplicar stamp puntual
     // ------------------------------------------------------------
     static void applyCustomBrushStroke(QImage &image, const QPoint &pos,
                                        const QImage &stamp, const BrushSettings &config,
@@ -1442,7 +1505,7 @@ public:
     }
 
     // ------------------------------------------------------------
-    // Aplicar línea de pincel — AHORA DELGADO (extraído)
+    // Aplicar línea de pincel
     // ------------------------------------------------------------
     static void applyCustomBrushLine(QImage &image, const QPointF &from, const QPointF &to,
                                      const QImage &stamp, const BrushSettings &config,
@@ -1655,7 +1718,7 @@ inline bool isArtisticTool(ToolType t) {
 } // namespace ArtisticPresets
 
 // ============================================================
-// SHAPE BUTTON — computeColors refactorizado con tabla de Look
+// SHAPE BUTTON
 // ============================================================
 class ShapeButton : public QPushButton {
     Q_OBJECT
@@ -1729,9 +1792,6 @@ protected:
     }
 
 private:
-    // ============================================================
-    // Lookup table de Look para eliminar la complejidad ciclomática
-    // ============================================================
     enum class ButtonKind { ImportEmpty, ImportFilled, Regular };
 
     struct ButtonLook {
@@ -1742,10 +1802,8 @@ private:
     };
 
     ButtonLook resolveLook() const {
-        if (isImportButton && isEmptyImport)
-            return lookImportEmpty();
-        if (isImportButton && !isEmptyImport)
-            return lookImportFilled();
+        if (isImportButton && isEmptyImport) return lookImportEmpty();
+        if (isImportButton && !isEmptyImport) return lookImportFilled();
         return lookRegular();
     }
 
@@ -1796,9 +1854,6 @@ private:
         return look;
     }
 
-    // ============================================================
-    // Pintado
-    // ============================================================
     void paintBackground(QPainter &p, const ButtonLook &look) {
         p.setPen(Qt::NoPen);
         p.setBrush(look.bg);
@@ -2352,9 +2407,6 @@ private:
     QImage customStampImage;
     ShapeButton *importButton = nullptr;
 
-    // ============================================================
-    // TEMA
-    // ============================================================
     void setupTheme(bool dark) {
         m_dark = dark;
         if (dark) {
@@ -2439,9 +2491,6 @@ private:
             .arg(c_accent, c_accentHover);
     }
 
-    // ============================================================
-    // FACTORIES
-    // ============================================================
     QLabel *makeSectionTitle(const QString &t) {
         QLabel *l = new QLabel(t);
         l->setStyleSheet(titleStyle());
@@ -2478,9 +2527,6 @@ private:
         return b;
     }
 
-    // ============================================================
-    // CONSTRUCCIÓN DE UI
-    // ============================================================
     void buildTopRow(QVBoxLayout *mainLayout) {
         QHBoxLayout *topRow = new QHBoxLayout();
         radio1 = new QRadioButton(tr("Pincel 1"));
@@ -2658,9 +2704,6 @@ private:
         connect(btnCancel, &QPushButton::clicked, this, &QDialog::reject);
     }
 
-    // ============================================================
-    // CATÁLOGO DE FIGURAS
-    // ============================================================
     void buildShapeGrid() {
         const QList<ShapeType> shapes = PaintEngine::allShapes();
         const int cols = 7;
@@ -2732,9 +2775,6 @@ private:
         saveControlsToPreset();
     }
 
-    // ============================================================
-    // CARGA / GUARDADO DE CONTROLES
-    // ============================================================
     void loadControlsFromPreset() {
         const BrushSettings &s = presets[activeIndex];
 
@@ -2858,9 +2898,6 @@ private:
         schedulePreview();
     }
 
-    // ============================================================
-    // PREVIEWS
-    // ============================================================
     void refreshPreviews() {
         const BrushSettings &s = presets[activeIndex];
         preview->updatePreview(s, previewColor, previewSecondColor);
@@ -2879,9 +2916,6 @@ private:
         previewTimer->start();
     }
 
-    // ============================================================
-    // INFO DE COMPOSICIÓN
-    // ============================================================
     void updateCompositeInfo() {
         const int count = compositeEditor->getElementCount();
         compositeInfo->setText(count > 0
@@ -2914,9 +2948,6 @@ private:
         }
     }
 
-    // ============================================================
-    // CONEXIONES
-    // ============================================================
     void connectSignals() {
         connect(radio1, &QRadioButton::toggled, this, [this](bool checked) {
             if (checked) { saveControlsToPreset(); activeIndex = 0; loadControlsFromPreset(); }
