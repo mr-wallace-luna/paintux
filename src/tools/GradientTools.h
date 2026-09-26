@@ -26,10 +26,12 @@
 
 class GradientDirectionWidget : public QWidget {
     Q_OBJECT
+
 private:
     double m_angle = 0.0;
     bool dragging = false;
 public:
+
     GradientDirectionWidget(QWidget *parent = nullptr) : QWidget(parent) {
         setFixedSize(100, 100);
         setCursor(Qt::CrossCursor);
@@ -38,6 +40,7 @@ public:
     void setAngle(double a) { m_angle = a; update(); }
     double getAngle() const { return m_angle; }
 signals:
+
     void angleChanged(double angle);
 protected:
     void mousePressEvent(QMouseEvent *e) override {
@@ -90,12 +93,11 @@ protected:
     }
 };
 
-// ============================================================
-// DIÁLOGO: Configuración completa de gradiente
-// ============================================================
+// DIÁLOGO
 class GradientDialog : public QDialog {
     Q_OBJECT
 private:
+
     QComboBox *typeCombo;
     QSlider *opacitySlider;
     QSpinBox *opacitySpin;
@@ -508,9 +510,8 @@ public:
     QColor getColor2() const { return color2; }
 };
 
-// ============================================================
-// MOTOR: Funciones estáticas para aplicar gradientes
-// ============================================================
+
+// clases principal
 class GradientTools {
 public:
     static QPainter::CompositionMode compositionMode(int m) {
@@ -590,4 +591,6 @@ public:
     }
 };
 
-#endif // GRADIENTTOOLS_H
+#endif 
+
+// GRADIENTTOOLS_H
