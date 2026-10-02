@@ -1,4 +1,8 @@
 
+
+https://github.com/user-attachments/assets/9bd9abff-3011-4454-9d30-be2283b50459
+
+
 # Paintlux Studio
 
 ![Qt](https://img.shields.io/badge/Qt-6.5+-41CD52?style=for-the-badge)
