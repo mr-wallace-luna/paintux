@@ -1,8 +1,5 @@
 
 
-https://github.com/user-attachments/assets/9bd9abff-3011-4454-9d30-be2283b50459
-
-
 # Paintlux Studio
 
 ![Qt](https://img.shields.io/badge/Qt-6.5+-41CD52?style=for-the-badge)
@@ -33,3 +30,6 @@ Escrito en C++/Qt 6.
 
 GPL-3.0. Ver [LICENSE](LICENSE).
 <img width="1920" height="1080" alt="Captura desde 2026-10-02 14-34-00" src="https://github.com/user-attachments/assets/21444526-bb5c-4492-aee9-3c3a4892dc9d" />
+
+
+https://github.com/user-attachments/assets/9bd9abff-3011-4454-9d30-be2283b50459
