@@ -27,3 +27,4 @@ Escrito en C++/Qt 6.
 ## Licencia
 
 GPL-3.0. Ver [LICENSE](LICENSE).
+<img width="1920" height="1080" alt="Captura desde 2026-10-02 14-34-00" src="https://github.com/user-attachments/assets/21444526-bb5c-4492-aee9-3c3a4892dc9d" />
