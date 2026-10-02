@@ -1,3 +1,4 @@
+<img width="1920" height="1080" alt="Captura desde 2026-10-02 14-34-00" src="https://github.com/user-attachments/assets/1e5ab0a1-9fbd-4b76-aa32-5e0bee7c0434" />
 # Paintlux Studio
 
 ![Qt](https://img.shields.io/badge/Qt-6.5+-41CD52?style=for-the-badge)
